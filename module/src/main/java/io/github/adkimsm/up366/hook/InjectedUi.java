@@ -144,6 +144,7 @@ final class InjectedUi {
         final TextView logStatus;
         final EditText devSelector;
         final TextView devOutput;
+        final TextView automationOutput;
         final EditText traceInput;
         final TextView traceResult;
         String lastDevDump = "";
@@ -171,6 +172,7 @@ final class InjectedUi {
             logStatus = new TextView(activity);
             devSelector = new EditText(activity);
             devOutput = new TextView(activity);
+            automationOutput = new TextView(activity);
             traceInput = new EditText(activity);
             traceResult = new TextView(activity);
 
@@ -418,6 +420,56 @@ final class InjectedUi {
             devOutput.setTextIsSelectable(true);
             devOutput.setText("（未查询：先打开一次题目页，再选选择器执行）");
             content.addView(devOutput);
+
+            content.addView(section(context, "自动化（默认关，需先打开对应开关）"));
+            Button fillButton = new Button(context);
+            fillButton.setText("一键填答（本地答案 → 点击选项）");
+            fillButton.setOnClickListener(view -> runAutoFill());
+            content.addView(fillButton);
+
+            Button advanceButton = new Button(context);
+            advanceButton.setText("快进听音并交卷");
+            advanceButton.setOnClickListener(view -> runAutoAdvance());
+            content.addView(advanceButton);
+
+            automationOutput.setTextSize(11);
+            automationOutput.setTextIsSelectable(true);
+            automationOutput.setText("（未执行）");
+            content.addView(automationOutput);
+        }
+
+        private void runAutoFill() {
+            if (!Config.enabled(activity, Config.AUTO_FILL)) {
+                Toast.makeText(activity, "请先在“功能开关”里打开：自动填答", Toast.LENGTH_LONG).show();
+                return;
+            }
+            automationOutput.setText("填答中…");
+            Automation.fill(activity, json -> {
+                automationOutput.setText(renderAutomation("fill", json));
+                LogSink.diagnostic("panel_auto_fill", Trace.newTraceId(), Trace.newRequestId(),
+                        "ok", "", 0, "result", LogSink.limit(LogSink.redact(json), 200));
+            });
+        }
+
+        private void runAutoAdvance() {
+            if (!Config.enabled(activity, Config.AUTO_ADVANCE)) {
+                Toast.makeText(activity, "请先在“功能开关”里打开：自动推进听音并交卷", Toast.LENGTH_LONG).show();
+                return;
+            }
+            automationOutput.setText("快进中…（伪造听音完成并尝试交卷，请勿离开）");
+            Automation.advance(activity, json -> {
+                automationOutput.setText(renderAutomation("advance", json));
+                LogSink.diagnostic("panel_auto_advance", Trace.newTraceId(), Trace.newRequestId(),
+                        "ok", "", 0, "result", LogSink.limit(LogSink.redact(json), 200));
+            });
+        }
+
+        private String renderAutomation(String kind, String json) {
+            try {
+                return kind + ":\n" + new JSONObject(json).toString(2);
+            } catch (Throwable ignored) {
+                return kind + ": " + json;
+            }
         }
 
         private void runDevTool(final String kind) {
@@ -640,6 +692,8 @@ final class InjectedUi {
         if (Config.INJECT_UI.equals(key)) return "注入只读面板";
         if (Config.LOG_FILE.equals(key)) return "结构化日志写入私有目录";
         if (Config.LOG_RAW_BRIDGE.equals(key)) return "调试：落原始桥回调脚本（含业务数据，用完删除）";
+        if (Config.AUTO_FILL.equals(key)) return "自动填答（只读答案索引 → 点击选项）";
+        if (Config.AUTO_ADVANCE.equals(key)) return "自动推进听音并交卷（伪造听完，高风险）";
         return key;
     }
 

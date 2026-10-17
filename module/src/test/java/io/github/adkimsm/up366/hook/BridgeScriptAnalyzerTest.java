@@ -77,6 +77,15 @@ public final class BridgeScriptAnalyzerTest {
     }
 
     @Test
+    public void readsAudioCallbackPrefixAndPlayRequestId() {
+        // BridgeRecorder strips a leading "javascript:" before analysis.
+        String script = "window.jsObj.onAudioStateChangeV1({\"id\":\"audio1\",\"state\":4})";
+        assertEquals("window.jsObj.", BridgeScriptAnalyzer.audioCallbackPrefix(script));
+        assertEquals("audio9", BridgeScriptAnalyzer.audioIdFromPlayRequest("{\"id\":\"audio9\",\"src\":\"x\"}"));
+        assertNull(BridgeScriptAnalyzer.audioIdFromPlayRequest("{\"src\":\"x\"}"));
+    }
+
+    @Test
     public void sourceDetectionRequiresADefinition() {
         String call = "WebViewJavascriptBridge._onAsyncFuncResult({\"key\":\"async_callback_key_1\"})";
         assertFalse(BridgeScriptAnalyzer.isBridgeSource(call));

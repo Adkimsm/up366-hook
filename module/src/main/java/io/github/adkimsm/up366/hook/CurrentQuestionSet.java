@@ -65,7 +65,25 @@ final class CurrentQuestionSet {
     }
 
     private static Item toItem(QuestionModel question) {
-        return new Item(question.questionText, question.answerText, question.options);
+        return new Item(question.questionId, question.elementId,
+                question.questionText, question.answerText, question.options);
+    }
+
+    /**
+     * {@code question_id -> answer_text} for the current snapshot, used by the optional auto-fill.
+     * Entries without a usable answer are skipped; the values never leave the target process.
+     */
+    static java.util.Map<String, String> answers() {
+        java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
+        Snapshot snapshot = current;
+        if (snapshot == null) return result;
+        for (Group group : snapshot.groups) {
+            for (Item item : group.items) {
+                if (item.questionId.length() == 0 || item.answerValue.length() == 0) continue;
+                result.put(item.questionId, item.answerValue);
+            }
+        }
+        return result;
     }
 
     /** Renders the material group headers plus the numbered {@code 题干：选项内容} lines. */
@@ -179,11 +197,16 @@ final class CurrentQuestionSet {
     }
 
     static final class Item {
+        final String questionId;
+        final String elementId;
         final String questionText;
         final String answerValue;
         final List<QuestionModel.OptionModel> options;
 
-        Item(String questionText, String answerValue, List<QuestionModel.OptionModel> options) {
+        Item(String questionId, String elementId, String questionText, String answerValue,
+             List<QuestionModel.OptionModel> options) {
+            this.questionId = questionId == null ? "" : questionId;
+            this.elementId = elementId == null ? "" : elementId;
             this.questionText = questionText == null ? "" : questionText;
             this.answerValue = answerValue == null ? "" : answerValue;
             this.options = Collections.unmodifiableList(new ArrayList<>(options));

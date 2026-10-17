@@ -25,6 +25,8 @@ final class Config {
     static final String INJECT_UI = "inject_ui";
     static final String LOG_FILE = "log_file";
     static final String LOG_RAW_BRIDGE = "log_raw_bridge";
+    static final String AUTO_FILL = "auto_fill";
+    static final String AUTO_ADVANCE = "auto_advance";
 
     /** Persistent UI preference (not a functional hook toggle) for the floating button. */
     static final String HIDE_FLOATING = "hide_floating";
@@ -36,7 +38,7 @@ final class Config {
 
     static final String[] KEYS = {
             ACTIVITY, NETWORK, WEBVIEW, PROBE, BRIDGE, QUESTION_METADATA, ANSWER_INDEX, INJECT_UI,
-            LOG_FILE, LOG_RAW_BRIDGE
+            LOG_FILE, LOG_RAW_BRIDGE, AUTO_FILL, AUTO_ADVANCE
     };
 
     private static final Object LOCK = new Object();

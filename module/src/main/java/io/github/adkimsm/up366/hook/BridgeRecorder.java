@@ -59,11 +59,17 @@ final class BridgeRecorder {
             if (function != null) {
                 // Panel-only diagnostics: the native->page audio callback format is what the
                 // automation needs to reproduce "listened" without waiting for playback.
+                String prefix = BridgeScriptAnalyzer.audioCallbackPrefix(inspected);
+                AudioPlayback.rememberCallbackPrefix(prefix);
+                String args = BridgeScriptAnalyzer.audioCallbackArguments(inspected);
+                // The native callback also carries the id, so the automation works even when the
+                // bridge object itself was not registered for method hooks.
+                AudioPlayback.remember(BridgeScriptAnalyzer.audioIdFromPlayRequest(args));
                 LogSink.ringOnly("audio_state_callback",
                         "webview_id", webViewId(webView),
                         "fn", function,
-                        "args", LogSink.limit(LogSink.redact(
-                                BridgeScriptAnalyzer.audioCallbackArguments(inspected)), 200),
+                        "prefix", LogSink.limit(prefix, 80),
+                        "args", LogSink.limit(LogSink.redact(args), 200),
                         "script_length", Integer.toString(inspected.length()));
             }
         }
@@ -172,6 +178,10 @@ final class BridgeRecorder {
             WebView webView = WEBVIEWS.get(param.thisObject);
             if (webView == null) return;
             QuestionSetNameRegistry.capture(method, param.args);
+            if ("playAudioWithParams".equals(method)) {
+                AudioPlayback.remember(BridgeScriptAnalyzer.audioIdFromPlayRequest(
+                        param.args.length > 0 ? String.valueOf(param.args[0]) : ""));
+            }
             if (!Config.enabled(webView.getContext(), Config.BRIDGE)) return;
             String callId = "b" + IDS.incrementAndGet();
             long started = System.currentTimeMillis();

@@ -19,6 +19,7 @@ final class BridgeScriptAnalyzer {
                     + "|__onResponseJSResult\\s*[=:]\\s*function|function\\s+__onResponseJSResult");
     private static final Pattern AUDIO_CALLBACK = Pattern.compile(
             "(onAudioStateChange(?:V[0-9])?)\\s*\\(([^)]{0,400})\\)");
+    private static final Pattern AUDIO_ID = Pattern.compile("\"id\"\\s*:\\s*\"([^\"]{1,64})\"");
 
     private BridgeScriptAnalyzer() {}
 
@@ -66,5 +67,23 @@ final class BridgeScriptAnalyzer {
     static String audioCallbackArguments(String script) {
         Matcher matcher = AUDIO_CALLBACK.matcher(script == null ? "" : script);
         return matcher.find() ? matcher.group(2).trim() : null;
+    }
+
+    /**
+     * Text immediately before the audio callback name (for example {@code window.jsObj.}), so the
+     * automation can rebuild the exact same call. Limited to the last 80 characters.
+     */
+    static String audioCallbackPrefix(String script) {
+        Matcher matcher = AUDIO_CALLBACK.matcher(script == null ? "" : script);
+        if (!matcher.find()) return null;
+        String prefix = script.substring(0, matcher.start(1));
+        return prefix.length() <= 80 ? prefix : prefix.substring(prefix.length() - 80);
+    }
+
+    /** Extracts the audio id the page passed to {@code playAudioWithParams}, or {@code null}. */
+    static String audioIdFromPlayRequest(String payload) {
+        if (payload == null) return null;
+        Matcher matcher = AUDIO_ID.matcher(payload);
+        return matcher.find() ? matcher.group(1) : null;
     }
 }

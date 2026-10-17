@@ -41,21 +41,39 @@ public final class CurrentQuestionSetTest {
 
     @Test
     public void resolvesMultiChoiceAndFallsBackForOtherFormats() {
-        CurrentQuestionSet.Item multi = new CurrentQuestionSet.Item("Pick two", "A,C", Arrays.asList(
-                option("A", "Alpha"), option("B", "Bravo"), option("C", "Charlie")));
+        CurrentQuestionSet.Item multi = new CurrentQuestionSet.Item("Q1", "E1", "Pick two", "A,C",
+                Arrays.asList(option("A", "Alpha"), option("B", "Bravo"), option("C", "Charlie")));
         assertEquals("Alpha、Charlie", CurrentQuestionSet.answerDisplay(multi));
 
-        CurrentQuestionSet.Item missing = new CurrentQuestionSet.Item("Pick", "D",
+        CurrentQuestionSet.Item missing = new CurrentQuestionSet.Item("Q2", "E2", "Pick", "D",
                 Arrays.asList(option("A", "Alpha")));
         assertEquals("D", CurrentQuestionSet.answerDisplay(missing));
 
-        CurrentQuestionSet.Item ordering = new CurrentQuestionSet.Item("Sort", "2,1,3",
+        CurrentQuestionSet.Item ordering = new CurrentQuestionSet.Item("Q3", "E3", "Sort", "2,1,3",
                 Collections.emptyList());
         assertEquals("2 -> 1 -> 3", CurrentQuestionSet.answerDisplay(ordering));
 
-        CurrentQuestionSet.Item blank = new CurrentQuestionSet.Item("Fill", "hello",
+        CurrentQuestionSet.Item blank = new CurrentQuestionSet.Item("Q4", "E4", "Fill", "hello",
                 Collections.emptyList());
         assertEquals("h****", CurrentQuestionSet.answerDisplay(blank));
+    }
+
+    @Test
+    public void answersMapUsesQuestionIdsOnlyForAnsweredItems() {
+        QuestionModel answered = question("Q-A", 1, "A?", "B", false,
+                option("A", "Alpha"), option("B", "Bravo"));
+        QuestionModel withoutAnswer = question("Q-B", 1, "B?", "", false,
+                option("A", "Alpha"), option("B", "Bravo"));
+        QuestionModel composite = withChildren(question("Q-C", 99, "材料", "", true),
+                answered);
+        CurrentQuestionSet.update(new PackageIdentity("pkg", "book", "chapter", "1"),
+                Arrays.asList(withoutAnswer, composite));
+
+        java.util.Map<String, String> answers = CurrentQuestionSet.answers();
+
+        assertEquals(1, answers.size());
+        assertEquals("B", answers.get("Q-A"));
+        assertFalse(answers.containsKey("Q-B"));
     }
 
     @Test

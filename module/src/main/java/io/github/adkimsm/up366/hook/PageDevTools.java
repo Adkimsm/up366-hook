@@ -3,8 +3,6 @@ package io.github.adkimsm.up366.hook;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.View;
-import android.view.ViewGroup;
 import android.webkit.WebView;
 
 import org.json.JSONArray;
@@ -26,6 +24,11 @@ import java.util.List;
 final class PageDevTools {
     interface Callback {
         void onResult(String json);
+    }
+
+    /** Delivers the WebView that currently shows content, with the candidate score summary. */
+    interface TargetCallback {
+        void onTarget(WebView webView, List<String> summaries);
     }
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -60,23 +63,32 @@ final class PageDevTools {
     }
 
     private static void run(final Activity activity, final String script, final Callback callback) {
+        resolveTarget(activity, (webView, summaries) -> {
+            if (webView == null) {
+                deliver(callback, errorWithCandidates("no_target", summaries));
+                return;
+            }
+            runOn(webView, script, summaries, callback);
+        });
+    }
+
+    /**
+     * Scores every WebView of the current Activity (plus the tracked fallback) and reports the one
+     * that shows the most content. Runs entirely on the UI thread; the callback may receive null.
+     */
+    static void resolveTarget(final Activity activity, final TargetCallback callback) {
         MAIN.post(() -> {
             List<WebView> candidates = collect(activity);
             if (candidates.isEmpty()) {
                 LogSink.event("devtools", "status", "no_webview");
-                deliver(callback, "{\"error\":\"no_webview\"}");
+                callback.onTarget(null, new ArrayList<>());
                 return;
             }
             final List<String> summaries = new ArrayList<>();
             final int[] bestScore = {Integer.MIN_VALUE};
             final WebView[] best = {null};
-            locate(candidates, 0, summaries, bestScore, best, () -> {
-                if (best[0] == null) {
-                    deliver(callback, errorWithCandidates("no_target", summaries));
-                    return;
-                }
-                runOn(best[0], script, summaries, callback);
-            });
+            locate(candidates, 0, summaries, bestScore, best,
+                    () -> callback.onTarget(best[0], summaries));
         });
     }
 
@@ -92,7 +104,7 @@ final class PageDevTools {
         try {
             webView.evaluateJavascript(PageDevToolsScripts.locate(), value -> {
                 try {
-                    JSONObject located = new JSONObject(unwrap(value));
+                    JSONObject located = new JSONObject(unwrapJson(value));
                     int score = score(located);
                     summaries.add((index + 1) + ". " + shortUrl(located.optString("href"))
                             + " score=" + score);
@@ -115,7 +127,7 @@ final class PageDevTools {
                               final List<String> summaries, final Callback callback) {
         try {
             webView.evaluateJavascript(script, value ->
-                    deliver(callback, enrich(unwrap(value), webView, summaries)));
+                    deliver(callback, enrich(unwrapJson(value), webView, summaries)));
         } catch (Throwable error) {
             LogSink.error("devtools_evaluate", error);
             deliver(callback, errorWithCandidates("evaluate_failed", summaries));
@@ -163,12 +175,7 @@ final class PageDevTools {
 
     /** Every WebView in the current Activity plus the fallback registry, de-duplicated. */
     private static List<WebView> collect(Activity activity) {
-        List<WebView> result = new ArrayList<>();
-        try {
-            if (activity != null) walk(activity.getWindow().getDecorView(), result);
-        } catch (Throwable ignored) {
-            // A missing decor view just means we fall back to the tracked pages.
-        }
+        List<WebView> result = new ArrayList<>(WebViewFinder.collect(activity));
         synchronized (TRACKED) {
             for (WeakReference<WebView> ref : TRACKED) {
                 WebView webView = ref.get();
@@ -180,25 +187,13 @@ final class PageDevTools {
         return result;
     }
 
-    private static void walk(View view, List<WebView> result) {
-        if (view == null || result.size() >= MAX_CANDIDATES) return;
-        if (view instanceof WebView) {
-            result.add((WebView) view);
-            return;
-        }
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) walk(group.getChildAt(i), result);
-        }
-    }
-
     private static String shortUrl(String url) {
         if (url == null || url.isEmpty()) return "<empty>";
         return url.length() <= 60 ? url : "..." + url.substring(url.length() - 57);
     }
 
     /** {@code evaluateJavascript} returns a JSON string literal; unwrap it back to raw JSON text. */
-    private static String unwrap(String value) {
+    static String unwrapJson(String value) {
         if (value == null || "null".equals(value)) return "{\"error\":\"empty_result\"}";
         try {
             return new JSONObject("{\"v\":" + value + "}").getString("v");
