@@ -104,6 +104,14 @@ public final class AutomationScriptsTest {
     }
 
     @Test
+    public void forceStopPayloadCarriesKnownDuration() {
+        assertEquals("{\"duration\":31500,\"msg\":\"\",\"id\":\"audio7\",\"state\":4,\"isForce\":0}",
+                AutomationScripts.forceStopPayload("audio7", 31_500L));
+        assertEquals("{\"duration\":0,\"msg\":\"\",\"id\":\"audio7\",\"state\":4,\"isForce\":0}",
+                AutomationScripts.forceStopPayload("audio7", -1L));
+    }
+
+    @Test
     public void submitScriptConfirmsThePopupBeforeClickingSubmit() {
         String script = AutomationScripts.submitScript(true);
         assertTrue(script.contains("u3compo-popup"));

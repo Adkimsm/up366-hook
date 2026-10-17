@@ -26,6 +26,7 @@ final class SubmitFlowRecorder {
             if (safeArgs.contains("unparsed")) dumpRawState(webView, method, callId, arg0(args));
         } else {
             safeArgs = "parameters=" + (args == null ? 0 : args.length) + ",content=<omitted>";
+            dumpRawSubmit(webView, method, callId, args);
         }
         LogSink.event(event, "phase", "call", "method", method, "call_id", callId,
                 "args", safeArgs);
@@ -63,6 +64,25 @@ final class SubmitFlowRecorder {
                     "class", payload == null ? "null" : payload.getClass().getName(),
                     "length", payload == null ? "0" : Integer.toString(String.valueOf(payload).length()),
                     "payload", payload == null ? "" : String.valueOf(payload));
+        } catch (Throwable ignored) {
+            // Raw diagnostics must never affect the target app.
+        }
+    }
+
+    /**
+     * When the raw debug switch is on, persists the full submit-call arguments to the target-private
+     * log file (never Logcat) so the server-bound time fields can be inventoried once and then
+     * erased. Sensitive; the file must be deleted after use.
+     */
+    private static void dumpRawSubmit(WebView webView, String method, String callId, Object[] args) {
+        try {
+            Context context = webView == null ? null : webView.getContext();
+            if (context == null || !Config.enabled(context, Config.LOG_RAW_BRIDGE)) return;
+            Object payload = arg0(args);
+            LogSink.rawEvent("submit_task_raw_args", "method", method, "call_id", callId,
+                    "class", payload == null ? "null" : payload.getClass().getName(),
+                    "length", payload == null ? "0" : Integer.toString(String.valueOf(payload).length()),
+                    "args", payload == null ? "" : String.valueOf(payload));
         } catch (Throwable ignored) {
             // Raw diagnostics must never affect the target app.
         }

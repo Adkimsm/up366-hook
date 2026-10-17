@@ -435,6 +435,16 @@ final class InjectedUi {
             });
             content.addView(speedButton);
 
+            Button disguiseButton = new Button(context);
+            disguiseButton.setText(disguiseLabel(activity));
+            disguiseButton.setOnClickListener(view -> {
+                int next = Config.nextDisguiseTarget(Config.disguiseTarget(activity));
+                Config.setDisguiseTarget(activity, next);
+                disguiseButton.setText(disguiseLabel(activity));
+                Toast.makeText(activity, disguiseLabel(activity), Toast.LENGTH_SHORT).show();
+            });
+            content.addView(disguiseButton);
+
             Button fillButton = new Button(context);
             fillButton.setText("一键填答（本地答案 → 点击选项）");
             fillButton.setOnClickListener(view -> runAutoFill());
@@ -699,6 +709,12 @@ final class InjectedUi {
         return "速度档：" + SpeedProfile.of(Config.speedProfile(context)).label + "（点击切换）";
     }
 
+    /** Label for the disguise-target button, e.g. {@code 伪装时长：自动（点击切换）}. */
+    private static String disguiseLabel(Context context) {
+        int minutes = Config.disguiseTarget(context);
+        return "伪装时长：" + (minutes <= 0 ? "自动" : minutes + " 分钟") + "（点击切换）";
+    }
+
     private static String flagLabel(String key) {
         if (Config.ACTIVITY.equals(key)) return "Activity 生命周期";
         if (Config.NETWORK.equals(key)) return "OkHttp 请求与响应元数据";
@@ -709,9 +725,10 @@ final class InjectedUi {
         if (Config.ANSWER_INDEX.equals(key)) return "本地答案索引（只读）";
         if (Config.INJECT_UI.equals(key)) return "注入只读面板";
         if (Config.LOG_FILE.equals(key)) return "结构化日志写入私有目录";
-        if (Config.LOG_RAW_BRIDGE.equals(key)) return "调试：落原始桥回调脚本（含业务数据，用完删除）";
+        if (Config.LOG_RAW_BRIDGE.equals(key)) return "调试：落原始桥回调与提交体字段（含业务数据，用完删除）";
         if (Config.AUTO_FILL.equals(key)) return "自动填答（只读答案索引 → 点击选项）";
         if (Config.AUTO_ADVANCE.equals(key)) return "自动推进听音并交卷（伪造听完，高风险）";
+        if (Config.SUBMIT_DISGUISE.equals(key)) return "提交时间伪装（快进时伪造正常用时）";
         return key;
     }
 

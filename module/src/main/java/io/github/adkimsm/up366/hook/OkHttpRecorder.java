@@ -2,12 +2,17 @@ package io.github.adkimsm.up366.hook;
 
 import android.content.Context;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.zip.GZIPInputStream;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
@@ -77,6 +82,7 @@ final class OkHttpRecorder {
             Object chain = args[0];
             Object request = callNoArg(chain, "request");
             logRequest(request);
+            captureSubmitBody(request);
             Object response;
             try {
                 response = callOneArg(chain, "proceed", request);
@@ -124,6 +130,97 @@ final class OkHttpRecorder {
             );
         } catch (Throwable error) {
             LogSink.error("log_http_response", error);
+        }
+    }
+
+    /**
+     * Debug capture for the submit endpoints: reads the (possibly gzip) request body, decompresses
+     * it and writes only a redacted field inventory — key names and time-like values, never answers
+     * or scores — to the target-private log file. Requires {@code log_file} and {@code log_raw_bridge};
+     * skipped entirely otherwise, and every failure is swallowed.
+     */
+    private static void captureSubmitBody(Object request) {
+        Context current = context;
+        if (current == null || !Config.enabled(current, Config.LOG_RAW_BRIDGE)) return;
+        try {
+            String url = String.valueOf(callNoArg(request, "url"));
+            String lower = url.toLowerCase(Locale.US);
+            if (!lower.contains("/submit")) return;
+            Object body = callNoArg(request, "body");
+            if (body == null) return;
+            String encoding = headerValue(request, "Content-Encoding");
+            byte[] bytes = readBodyBytes(body);
+            if (bytes == null) return;
+            if (bytes.length >= 2 && (bytes[0] & 0xff) == 0x1f && (bytes[1] & 0xff) == 0x8b) {
+                bytes = gunzip(bytes);
+                if (bytes == null) return;
+                encoding = encoding.isEmpty() ? "gzip" : encoding + "+gunzip";
+            }
+            String text = new String(bytes, StandardCharsets.UTF_8);
+            LogSink.rawEvent("submit_body_inventory",
+                    "url", LogSink.redact(url),
+                    "encoding", encoding,
+                    "bytes", Integer.toString(bytes.length),
+                    "inventory", SubmitBodyInventory.of(text));
+        } catch (Throwable ignored) {
+            // Debug capture must never affect the request path.
+        }
+    }
+
+    private static String headerValue(Object request, String name) {
+        try {
+            Method header = findOneArg(request.getClass(), "header", String.class);
+            if (header == null) return "";
+            Object value = header.invoke(request, name);
+            return value == null ? "" : String.valueOf(value);
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private static byte[] readBodyBytes(Object body) {
+        try {
+            Object oneShot = callNoArg(body, "isOneShot");
+            if (Boolean.TRUE.equals(oneShot)) return null;
+        } catch (NoSuchMethodException ignored) {
+            // Older OkHttp versions do not expose isOneShot.
+        } catch (Throwable ignored) {
+            // Treat any other reflection failure as unknown and continue below.
+        }
+        try {
+            Object length = callNoArg(body, "contentLength");
+            if (length instanceof Number && ((Number) length).longValue() > 1_048_576L) return null;
+        } catch (Throwable ignored) {
+            // Unknown length is fine; the read below is bounded by the gunzip guard.
+        }
+        try {
+            Class<?> bufferClass = Class.forName("okio.Buffer", false, classLoader);
+            Object buffer = bufferClass.getDeclaredConstructor().newInstance();
+            Method writeTo = findOneArg(body.getClass(), "writeTo", bufferClass);
+            if (writeTo == null) return null;
+            writeTo.invoke(body, buffer);
+            Method readByteArray = bufferClass.getMethod("readByteArray");
+            Object result = readByteArray.invoke(buffer);
+            return result instanceof byte[] ? (byte[]) result : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static byte[] gunzip(byte[] bytes) {
+        try (GZIPInputStream input = new GZIPInputStream(new ByteArrayInputStream(bytes));
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] chunk = new byte[4096];
+            int total = 0;
+            int read;
+            while ((read = input.read(chunk)) > 0) {
+                total += read;
+                if (total > 1_048_576) return null;
+                output.write(chunk, 0, read);
+            }
+            return output.toByteArray();
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 

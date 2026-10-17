@@ -72,6 +72,7 @@ final class QuestionPackageRecorder {
             Map<String, ListeningResourceMapper.Resource> resources =
                     ListeningResourceMapper.index(questions);
             ReadOnlyTaskMonitor.registerQuestions(webView, questions);
+            SubmitDisguise.registerPackage(webView, questions);
             CurrentQuestionSet.update(identity, questions);
             int setSize = CurrentQuestionSet.snapshot() == null
                     ? 0 : CurrentQuestionSet.snapshot().itemCount();

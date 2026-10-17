@@ -25,6 +25,10 @@ final class Automation {
     private static final int MAX_STEPS = 1500;
     private static final int SUBMIT_GRACE_STEPS = 12;
 
+    /** The run currently driving the fast-forward, if any; used to finish it on observed submit. */
+    private static volatile Run activeRun;
+    private static volatile Callback activeCallback;
+
     private Automation() {}
 
     /** Clicks every known answer inside the answering slides. */
@@ -44,6 +48,7 @@ final class Automation {
                 deliver(callback, "{\"error\":\"no_webview\"}");
                 return;
             }
+            SubmitDisguise.arm(webView);
             evaluate(webView, AutomationScripts.fillScript(answers), json -> {
                 BUSY.set(false);
                 LogSink.event("auto_fill_result", "answers", Integer.toString(answers.size()),
@@ -65,6 +70,7 @@ final class Automation {
                 deliver(callback, "{\"error\":\"no_webview\"}");
                 return;
             }
+            SubmitDisguise.arm(webView);
             final SpeedProfile profile = SpeedProfile.of(Config.speedProfile(webView.getContext()));
             LogSink.event("auto_advance_start", "profile", profile.label,
                     "rate", profile.rate, "clock", Integer.toString(profile.clock),
@@ -72,9 +78,23 @@ final class Automation {
             // Compress the page's answer/reading waits for the duration of the run.
             evaluate(webView, AutomationScripts.pageHooksScript(profile), clamp -> {
                 Run run = new Run(webView, profile);
+                activeRun = run;
+                activeCallback = callback;
                 step(webView, run, callback);
             });
         });
+    }
+
+    /**
+     * Called from the bridge observer: the page has submitted on its own (the exam flow calls
+     * {@code submitData} when the last section ends), so the fast-forward has nothing left to do.
+     * Ending here also releases the busy flag instead of spinning until the step limit.
+     */
+    static void onSubmitObserved(WebView webView) {
+        Run run = activeRun;
+        Callback callback = activeCallback;
+        if (run == null || callback == null || webView != run.webView) return;
+        MAIN.post(() -> finish(callback, run, "submitted"));
     }
 
     /**
@@ -103,6 +123,8 @@ final class Automation {
         final WebView webView;
         final SpeedProfile profile;
         final long startedAt = android.os.SystemClock.elapsedRealtime();
+        final java.util.concurrent.atomic.AtomicBoolean finished =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
         String targetId = "";
         long targetSetAt = startedAt;
         long audioWaitMs;
@@ -124,6 +146,7 @@ final class Automation {
     }
 
     private static void step(final WebView webView, final Run run, final Callback callback) {
+        if (run.finished.get()) return;
         if (run.steps++ >= MAX_STEPS) {
             finish(callback, run, "max_steps");
             return;
@@ -144,7 +167,8 @@ final class Automation {
             run.lastStopAt = now;
         }
         String script = fireStop
-                ? AutomationScripts.forceStopScript(run.targetId, AudioPlayback.callbackPrefix())
+                ? AutomationScripts.forceStopScript(run.targetId, AudioPlayback.callbackPrefix(),
+                        AudioPlayback.durationFor(run.targetId))
                 : AutomationScripts.submitScript(run.clickedAtStep < 0);
         evaluate(webView, script, json -> {
             if (fireStop) {
@@ -190,6 +214,11 @@ final class Automation {
     }
 
     private static void finish(Callback callback, Run run, String reason) {
+        if (!run.finished.compareAndSet(false, true)) return;
+        if (activeRun == run) {
+            activeRun = null;
+            activeCallback = null;
+        }
         BUSY.set(false);
         evaluate(run.webView, AutomationScripts.pageHooksRestoreScript(), restored -> {
             int timerCalls = counter(restored, "timerCalls");

@@ -65,6 +65,7 @@ final class BridgeRecorder {
                 // The native callback also carries the id, so the automation works even when the
                 // bridge object itself was not registered for method hooks.
                 AudioPlayback.remember(BridgeScriptAnalyzer.audioIdFromPlayRequest(args));
+                AudioPlayback.rememberFromCallback(args);
                 LogSink.ringOnly("audio_state_callback",
                         "webview_id", webViewId(webView),
                         "fn", function,
@@ -178,6 +179,10 @@ final class BridgeRecorder {
             WebView webView = WEBVIEWS.get(param.thisObject);
             if (webView == null) return;
             QuestionSetNameRegistry.capture(method, param.args);
+            if ("submitTask".equals(method) || "submitTaskV1".equals(method)) {
+                // The listening flow submits itself when the last section ends; that ends the run.
+                Automation.onSubmitObserved(webView);
+            }
             if ("playAudioWithParams".equals(method)) {
                 String payload = param.args.length > 0 ? String.valueOf(param.args[0]) : "";
                 AudioPlayback.remember(BridgeScriptAnalyzer.audioIdFromPlayRequest(payload));
@@ -191,7 +196,10 @@ final class BridgeRecorder {
                     }
                 }
             }
-            if (!Config.enabled(webView.getContext(), Config.BRIDGE)) return;
+            if (!Config.enabled(webView.getContext(), Config.BRIDGE)) {
+                rewriteForDisguise(webView, method, param);
+                return;
+            }
             String callId = "b" + IDS.incrementAndGet();
             long started = System.currentTimeMillis();
             Call call = new Call(callId, started, webView);
@@ -213,6 +221,7 @@ final class BridgeRecorder {
             }
             SubmitFlowRecorder.call(webView, method, param.args, callId);
             UploadStatusRecorder.call(method, param.args, callId);
+            rewriteForDisguise(webView, method, param);
         }
 
         @Override
@@ -245,6 +254,20 @@ final class BridgeRecorder {
             }
             SubmitFlowRecorder.result(call.webView, method, call.callId, elapsed, result, error);
             UploadStatusRecorder.result(method, call.callId, elapsed, result, error);
+        }
+    }
+
+    /**
+     * Applies the fast-forward disguise to one bridge call after it has been recorded, so the raw
+     * diagnostics still see the original arguments. Never throws into the target app.
+     */
+    private static void rewriteForDisguise(WebView webView, String method,
+                                           XC_MethodHook.MethodHookParam param) {
+        try {
+            Object[] rewritten = SubmitDisguise.rewrite(webView, method, param.args);
+            if (rewritten != null) param.args = rewritten;
+        } catch (Throwable error) {
+            LogSink.error("submit_disguise_bridge", error);
         }
     }
 

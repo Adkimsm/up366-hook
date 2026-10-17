@@ -27,9 +27,16 @@ final class Config {
     static final String LOG_RAW_BRIDGE = "log_raw_bridge";
     static final String AUTO_FILL = "auto_fill";
     static final String AUTO_ADVANCE = "auto_advance";
+    static final String SUBMIT_DISGUISE = "submit_disguise";
 
     /** Int-valued preference (not a boolean toggle): index into {@link SpeedProfile#LEVELS}. */
     static final String SPEED_PROFILE = "speed_profile";
+
+    /** Int-valued preference: disguise target total in minutes, 0 = auto from the spoken audio. */
+    static final String DISGUISE_TARGET = "disguise_target";
+
+    /** Preset disguise totals in minutes; the panel cycles through them. */
+    static final int[] DISGUISE_TARGET_PRESETS = {0, 15, 20, 30};
 
     /** Persistent UI preference (not a functional hook toggle) for the floating button. */
     static final String HIDE_FLOATING = "hide_floating";
@@ -41,7 +48,7 @@ final class Config {
 
     static final String[] KEYS = {
             ACTIVITY, NETWORK, WEBVIEW, PROBE, BRIDGE, QUESTION_METADATA, ANSWER_INDEX, INJECT_UI,
-            LOG_FILE, LOG_RAW_BRIDGE, AUTO_FILL, AUTO_ADVANCE
+            LOG_FILE, LOG_RAW_BRIDGE, AUTO_FILL, AUTO_ADVANCE, SUBMIT_DISGUISE
     };
 
     private static final Object LOCK = new Object();
@@ -127,7 +134,40 @@ final class Config {
     }
 
     static boolean defaultValue(String key) {
-        return ACTIVITY.equals(key) || INJECT_UI.equals(key);
+        return ACTIVITY.equals(key) || INJECT_UI.equals(key) || SUBMIT_DISGUISE.equals(key);
+    }
+
+    /** Selected disguise target in minutes; 0 means auto-computed from the parsed package. */
+    static int disguiseTarget(Context context) {
+        if (context == null) return 0;
+        try {
+            int value = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getInt(DISGUISE_TARGET, 0);
+            return Math.max(0, Math.min(120, value));
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    static long disguiseTargetMs(Context context) {
+        return disguiseTarget(context) * 60_000L;
+    }
+
+    static void setDisguiseTarget(Context context, int minutes) {
+        if (context == null) return;
+        int safe = Math.max(0, Math.min(120, minutes));
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putInt(DISGUISE_TARGET, safe).apply();
+        LogSink.event("config_updated", "key", DISGUISE_TARGET, "value", Integer.toString(safe),
+                "status", "ok");
+    }
+
+    /** Next preset after {@code current}, wrapping around. */
+    static int nextDisguiseTarget(int current) {
+        for (int preset : DISGUISE_TARGET_PRESETS) {
+            if (preset > current) return preset;
+        }
+        return DISGUISE_TARGET_PRESETS[0];
     }
 
     /** Selected speed profile index; falls back to the packaged default. */

@@ -126,9 +126,13 @@ final class AutomationScripts {
      * unlocks the section and advances the slide.
      */
     static String forceStopScript(String audioId, String capturedPrefix) {
+        return forceStopScript(audioId, capturedPrefix, 0L);
+    }
+
+    static String forceStopScript(String audioId, String capturedPrefix, long durationMs) {
         String exact = exactCallExpression(capturedPrefix);
         return "(function(){try{"
-                + "var payload=" + forceStopPayload(audioId) + ";"
+                + "var payload=" + forceStopPayload(audioId, durationMs) + ";"
                 + (exact == null ? "" : "try{" + exact
                         + ";return JSON.stringify({called:true,via:'exact'});}catch(e){}")
                 + "var objs=[window.jsObj,window.jsChapterObj,window._android_js_obj_];"
@@ -166,8 +170,18 @@ final class AutomationScripts {
     }
 
     static String forceStopPayload(String audioId) {
+        return forceStopPayload(audioId, 0L);
+    }
+
+    /**
+     * The synthetic "finished" payload. The real callback carries the clip's duration, so a known
+     * duration is used to keep the page-side player state realistic; 0 only when it was never seen.
+     */
+    static String forceStopPayload(String audioId, long durationMs) {
         String id = audioId == null ? "" : audioId.replace("\\", "").replace("\"", "");
-        return "{\"duration\":0,\"msg\":\"\",\"id\":\"" + id + "\",\"state\":4,\"isForce\":0}";
+        long duration = Math.max(0L, durationMs);
+        return "{\"duration\":" + duration + ",\"msg\":\"\",\"id\":\"" + id
+                + "\",\"state\":4,\"isForce\":0}";
     }
 
     /**
