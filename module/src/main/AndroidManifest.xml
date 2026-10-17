@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="UP366 LSPosed P1 Read-Only">
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription" android:value="UP366 P1 read-only runtime observation" />
+        <meta-data android:name="xposedminversion" android:value="54" />
+        <meta-data android:name="xposedsharedprefs" android:value="true" />
+    </application>
+</manifest>
