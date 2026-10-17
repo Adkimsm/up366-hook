@@ -36,6 +36,14 @@
 
 产物：`module/build/outputs/apk/debug/module-debug.apk`（纯 LSPosed 模块，无独立 App UI、无 Provider、无 `exported` 组件）。
 
+发布构建需要本地 `keystore.properties`（指向签名 keystore，不入库；缺省时 release 包不签名）：
+
+```bash
+./gradlew :module:assembleRelease
+```
+
+产物：`module/build/outputs/apk/release/module-release.apk`，发布到 LSPosed 模块仓库的是这个包。
+
 | 项 | 值 |
 |---|---|
 | 模块包名 | `io.github.adkimsm.up366.hook` |

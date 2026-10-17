@@ -6,6 +6,11 @@ local.properties
 *.iml
 .idea/
 
+# Release signing (local only, never commit)
+keystore.properties
+*.jks
+*.keystore
+
 # Local-only working material, never committed or published
 docs/
 flipbook/
