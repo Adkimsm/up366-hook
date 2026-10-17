@@ -53,6 +53,30 @@ public final class BridgeScriptAnalyzerTest {
     }
 
     @Test
+    public void detectsNativeAudioStateCallback() {
+        String script = "javascript:WebViewJavascriptBridge._callJsFuncWithResult("
+                + "{\"uniqueId\":\"1\",\"jsFunc\":\"onAudioStateChangeV1('media-1',3)\"});";
+        assertTrue(BridgeScriptAnalyzer.isAudioStateCallback(script));
+        assertEquals("onAudioStateChangeV1", BridgeScriptAnalyzer.audioCallbackFunction(script));
+        assertTrue(BridgeScriptAnalyzer.audioCallbackArguments(script).contains("'media-1',3"));
+    }
+
+    @Test
+    public void audioCallbackDefinitionIsNotTreatedAsACall() {
+        String definition = "m.onAudioStateChange=function(e,t,n,i){switch(t){case 1:break}};"
+                + "onAudioStateChangeV1:function(e){return e}";
+        assertNull(BridgeScriptAnalyzer.audioCallbackFunction(definition));
+        assertNull(BridgeScriptAnalyzer.audioCallbackArguments(definition));
+    }
+
+    @Test
+    public void audioCallbackWithoutArgumentsStillReportsItsName() {
+        assertEquals("onAudioStateChange",
+                BridgeScriptAnalyzer.audioCallbackFunction("onAudioStateChange()"));
+        assertEquals("", BridgeScriptAnalyzer.audioCallbackArguments("onAudioStateChange()"));
+    }
+
+    @Test
     public void sourceDetectionRequiresADefinition() {
         String call = "WebViewJavascriptBridge._onAsyncFuncResult({\"key\":\"async_callback_key_1\"})";
         assertFalse(BridgeScriptAnalyzer.isBridgeSource(call));

@@ -54,6 +54,19 @@ final class BridgeRecorder {
         if (webView == null || script == null || !Config.enabled(webView.getContext(), Config.BRIDGE)) return;
         String inspected = script.startsWith("javascript:")
                 ? script.substring("javascript:".length()) : script;
+        if (BridgeScriptAnalyzer.isAudioStateCallback(inspected)) {
+            String function = BridgeScriptAnalyzer.audioCallbackFunction(inspected);
+            if (function != null) {
+                // Panel-only diagnostics: the native->page audio callback format is what the
+                // automation needs to reproduce "listened" without waiting for playback.
+                LogSink.ringOnly("audio_state_callback",
+                        "webview_id", webViewId(webView),
+                        "fn", function,
+                        "args", LogSink.limit(LogSink.redact(
+                                BridgeScriptAnalyzer.audioCallbackArguments(inspected)), 200),
+                        "script_length", Integer.toString(inspected.length()));
+            }
+        }
         if (inspected.contains("taskUpload") || inspected.contains("fileUpload")
                 || inspected.contains("fileDownload")) {
             LogSink.event("upload_status", "phase", "native_event_callback", "webview_id", webViewId(webView),

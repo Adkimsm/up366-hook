@@ -399,6 +399,11 @@ final class InjectedUi {
             gateButton.setOnClickListener(view -> runDevTool("gate"));
             content.addView(gateButton);
 
+            Button audioButton = new Button(context);
+            audioButton.setText("原生音频回调");
+            audioButton.setOnClickListener(view -> showAudioCallbacks());
+            content.addView(audioButton);
+
             Button devCopy = new Button(context);
             devCopy.setText("复制结果");
             devCopy.setOnClickListener(view -> copyToClipboard(devOutput.getText().toString()));
@@ -440,6 +445,19 @@ final class InjectedUi {
             LogSink.rawEvent("devtools_dump", "selector", lastDevSelector, "dump", lastDevDump);
             Toast.makeText(activity, LogFileSink.enabled()
                     ? "已按 raw 开关写入日志文件" : "需先开启 log_file", Toast.LENGTH_LONG).show();
+        }
+
+        /** Shows the native-to-page audio-state callbacks captured in the in-memory ring buffer. */
+        private void showAudioCallbacks() {
+            List<String> lines = LogSink.recentEventsNamed("audio_state_callback", 20);
+            String text = lines.isEmpty()
+                    ? "（未捕获到原生音频回调：请先在听力页播放一次音频）" : join(lines);
+            lastDevSelector = "<native audio callbacks>";
+            lastDevDump = text;
+            devOutput.setText(text);
+            LogSink.diagnostic("devtools_query", Trace.newTraceId(), Trace.newRequestId(),
+                    lines.isEmpty() ? "empty" : "ok", "", 0,
+                    "tool", "audio", "count", Integer.toString(lines.size()));
         }
 
         private String renderOutline(String selector, String json) {

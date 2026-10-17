@@ -123,6 +123,29 @@ final class LogSink {
         return result;
     }
 
+    /**
+     * Records an event only in the in-memory ring buffer, readable from the injected panel. It is
+     * never written to Logcat or the file sink, so panel-only diagnostics stay in the process.
+     */
+    static void ringOnly(String event, String... fields) {
+        String line = build(event, fields);
+        record(event, line, null, null);
+    }
+
+    /** Newest-first lines for one event name, capped at {@code limit}. */
+    static List<String> recentEventsNamed(String event, int limit) {
+        List<String> result = new ArrayList<>();
+        if (event == null) return result;
+        synchronized (RING) {
+            java.util.Iterator<RingEntry> iterator = RING.descendingIterator();
+            while (iterator.hasNext() && result.size() < Math.max(1, limit)) {
+                RingEntry entry = iterator.next();
+                if (event.equals(entry.event)) result.add(entry.line);
+            }
+        }
+        return result;
+    }
+
     /** Clears the in-memory ring buffer; used by the panel's log maintenance action. */
     static void clearBuffer() {
         synchronized (RING) {

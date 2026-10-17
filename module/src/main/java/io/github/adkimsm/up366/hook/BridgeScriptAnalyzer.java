@@ -17,6 +17,8 @@ final class BridgeScriptAnalyzer {
             "_onAsyncFuncResult\\s*[=:]\\s*function|function\\s+_onAsyncFuncResult"
                     + "|_callJsFuncWithResult\\s*[=:]\\s*function|function\\s+_callJsFuncWithResult"
                     + "|__onResponseJSResult\\s*[=:]\\s*function|function\\s+__onResponseJSResult");
+    private static final Pattern AUDIO_CALLBACK = Pattern.compile(
+            "(onAudioStateChange(?:V[0-9])?)\\s*\\(([^)]{0,400})\\)");
 
     private BridgeScriptAnalyzer() {}
 
@@ -47,5 +49,22 @@ final class BridgeScriptAnalyzer {
         Matcher field = KEY_FIELD.matcher(script);
         if (field.find()) return field.group(1);
         return null;
+    }
+
+    /** True when the script may deliver a native audio-state callback into the page. */
+    static boolean isAudioStateCallback(String script) {
+        return script != null && script.contains("onAudioStateChange");
+    }
+
+    /** Name of the invoked audio-state callback, or {@code null} when it is only a definition. */
+    static String audioCallbackFunction(String script) {
+        Matcher matcher = AUDIO_CALLBACK.matcher(script == null ? "" : script);
+        return matcher.find() ? matcher.group(1) : null;
+    }
+
+    /** Raw argument text of the first audio-state callback, or {@code null} when absent. */
+    static String audioCallbackArguments(String script) {
+        Matcher matcher = AUDIO_CALLBACK.matcher(script == null ? "" : script);
+        return matcher.find() ? matcher.group(2).trim() : null;
     }
 }
