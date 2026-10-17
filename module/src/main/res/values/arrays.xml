@@ -1,0 +1,5 @@
+<resources>
+    <string-array name="xposedscope">
+        <item>com.up366.mobile</item>
+    </string-array>
+</resources>
