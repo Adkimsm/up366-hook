@@ -36,7 +36,9 @@ final class OkHttpRecorder {
     }
 
     static void setContext(Context value) {
-        context = value.getApplicationContext();
+        if (value == null) return;
+        Context app = value.getApplicationContext();
+        context = app != null ? app : value;
     }
 
     private static void inject(Object builder) {

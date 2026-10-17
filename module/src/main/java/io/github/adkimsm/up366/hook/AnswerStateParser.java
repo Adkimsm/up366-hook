@@ -15,15 +15,25 @@ final class AnswerStateParser {
     static String summarize(Object[] args, Map<String, QuestionModel> questions) {
         if (args == null || args.length == 0) return "args=0";
         Object value = args[0];
-        if (!(value instanceof String) && !(value instanceof JSONObject)) {
+        if (!(value instanceof String) && !(value instanceof JSONObject) && !(value instanceof JSONArray)) {
             return "state_type=" + type(value) + ",state_present=" + (value != null);
         }
         try {
-            JSONObject state = value instanceof JSONObject
-                    ? (JSONObject) value : new JSONObject(String.valueOf(value));
-            return summarizeObject(state, questions);
+            if (value instanceof JSONObject) return summarizeObject((JSONObject) value, questions);
+            if (value instanceof JSONArray) {
+                return "state_type=array,length=" + ((JSONArray) value).length();
+            }
+            String text = String.valueOf(value).trim();
+            if (text.startsWith("[")) return "state_type=array,length=" + text.length();
+            return summarizeObject(new JSONObject(text), questions);
         } catch (Throwable error) {
-            return "state_type=unparsed,state_present=true";
+            String text = String.valueOf(value);
+            String trimmed = text.trim();
+            return "state_type=unparsed,state_present=true"
+                    + ",class=" + value.getClass().getSimpleName()
+                    + ",length=" + text.length()
+                    + ",starts_with=" + (trimmed.isEmpty() ? "empty"
+                    : Character.toString(trimmed.charAt(0)));
         }
     }
 

@@ -1,5 +1,6 @@
 package io.github.adkimsm.up366.hook;
 
+import android.content.Context;
 import android.webkit.WebView;
 import android.webkit.JavascriptInterface;
 import android.os.Handler;
@@ -8,8 +9,6 @@ import android.os.Looper;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,9 +21,6 @@ import de.robv.android.xposed.XposedBridge;
 final class BridgeRecorder {
     private static final String EXTRA = "up366.bridge.call";
     private static final long ASYNC_TTL_MS = 30_000L;
-    private static final Pattern ASYNC_RESULT = Pattern.compile(
-            "_onAsyncFuncResult\\s*\\(\\s*\\{\\s*['\\\"]?key['\\\"]?\\s*:\\s*['\\\"]([^'\\\"]+)['\\\"]"
-    );
     private static final AtomicLong IDS = new AtomicLong();
     private static final Handler TIMEOUTS = new Handler(Looper.getMainLooper());
     private static final Set<Class<?>> HOOKED =
@@ -65,6 +61,12 @@ final class BridgeRecorder {
                             : inspected.contains("fileUpload") ? "fileUpload" : "fileDownload",
                     "script_length", Integer.toString(inspected.length()));
         }
+        // An injected copy of the bridge source defines the callbacks; it is not a result.
+        if (BridgeScriptAnalyzer.isBridgeSource(inspected)) {
+            LogSink.event("bridge_result", "source", "bridge_source_injection", "webview_id", webViewId(webView),
+                    "script_length", Integer.toString(inspected.length()));
+            return;
+        }
         if (inspected.contains("_callJsFuncWithResult")) {
             LogSink.event("bridge_result", "source", "registered_event_callback", "webview_id", webViewId(webView),
                     "script_length", Integer.toString(inspected.length()));
@@ -74,13 +76,13 @@ final class BridgeRecorder {
                     "script_length", Integer.toString(inspected.length()));
         }
         if (!inspected.contains("_onAsyncFuncResult")) return;
-        Matcher matcher = ASYNC_RESULT.matcher(inspected);
-        if (!matcher.find()) {
+        String key = BridgeScriptAnalyzer.extractAsyncKey(inspected);
+        if (key == null) {
             LogSink.event("bridge_result", "source", "orphan_async_bridge", "webview_id", webViewId(webView),
                     "reason", "callback_key_unreadable", "script_length", Integer.toString(inspected.length()));
+            dumpRawCallback(webView, inspected);
             return;
         }
-        String key = matcher.group(1);
         Pending pending = PENDING.remove(key);
         LogSink.event("bridge_result",
                 "source", pending == null ? "orphan_async_bridge" : "async_bridge_callback",
@@ -89,6 +91,23 @@ final class BridgeRecorder {
                 "callback_key", key,
                 "elapsed_ms", pending == null ? "" : Long.toString(System.currentTimeMillis() - pending.started),
                 "script_length", Integer.toString(inspected.length()));
+        if (pending == null) dumpRawCallback(webView, inspected);
+    }
+
+    /**
+     * When the raw debug switch is on, persists the unreadable callback script straight to the
+     * target-private log file (never Logcat) so its real shape can be read back and the parser
+     * fixed in one pass. Off by default; the written file must be deleted after use.
+     */
+    private static void dumpRawCallback(WebView webView, String script) {
+        try {
+            Context context = webView.getContext();
+            if (context == null || !Config.enabled(context, Config.LOG_RAW_BRIDGE)) return;
+            LogSink.rawEvent("bridge_raw_callback", "webview_id", webViewId(webView),
+                    "length", Integer.toString(script.length()), "script", script);
+        } catch (Throwable ignored) {
+            // Raw diagnostics must never affect the target app.
+        }
     }
 
     static boolean shouldObserveJavascript(String script) {

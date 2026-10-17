@@ -49,6 +49,30 @@ final class LogSink {
     }
 
     static void event(String event, String... fields) {
+        String line = build(event, fields);
+        String traceId = null;
+        String requestId = null;
+        if (fields != null) {
+            for (int i = 0; i + 1 < fields.length; i += 2) {
+                if ("traceId".equals(fields[i])) traceId = fields[i + 1];
+                else if ("requestId".equals(fields[i])) requestId = fields[i + 1];
+            }
+        }
+        record(event, line, traceId, requestId);
+        emit(line);
+        LogFileSink.write(line);
+    }
+
+    /**
+     * Builds the same JSON line but writes it only to the file sink, never to Logcat or the ring
+     * buffer. Used for raw (unredacted) debug payloads that must stay out of Logcat; the file is
+     * only written when both file logging and the raw debug switch are on.
+     */
+    static void rawEvent(String event, String... fields) {
+        LogFileSink.writeRaw(build(event, fields));
+    }
+
+    private static String build(String event, String... fields) {
         StringBuilder json = new StringBuilder(256);
         json.append('{');
         field(json, "time", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(new Date()));
@@ -56,17 +80,13 @@ final class LogSink {
         field(json, "sdk", Integer.toString(Build.VERSION.SDK_INT));
         field(json, "processRole", processRole);
         field(json, "event", event);
-        String traceId = null;
-        String requestId = null;
-        for (int i = 0; i + 1 < fields.length; i += 2) {
-            field(json, fields[i], fields[i + 1]);
-            if ("traceId".equals(fields[i])) traceId = fields[i + 1];
-            else if ("requestId".equals(fields[i])) requestId = fields[i + 1];
+        if (fields != null) {
+            for (int i = 0; i + 1 < fields.length; i += 2) {
+                field(json, fields[i], fields[i + 1]);
+            }
         }
         json.append('}');
-        String line = json.toString();
-        record(event, line, traceId, requestId);
-        emit(line);
+        return json.toString();
     }
 
     /** Records every emitted diagnostic into the bounded ring buffer, in emission order. */

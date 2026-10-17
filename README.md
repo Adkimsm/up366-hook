@@ -19,7 +19,7 @@
 | 移动端 HAR / 练习包侦察 | ✅ 已完成第一轮（见 `docs/02-apk-recon.md`、`docs/07-flipbook-recon.md`） |
 | Android 方案设计 | ✅ 已完成（见 `docs/04-android-plan.md`） |
 | P0 侦察模块代码 | ✅ 已完成首版骨架（待真机/LSPosed 验证） |
-| P1a 只读运行时观察 | 🟡 代码已实现；需在 LSPosed/天学网上验证异步关联、探针和提交状态 |
+| P1a 只读运行时观察 | 🟢 异步回调关联已真机验证（10/10 带 `call_id`，`orphan=0`、`timeout=0`）；桥源码注入已区分；OkHttp 已抓到业务请求/响应（34/34，含 `study-api…/score/gzip/submit`、`growth-api…/analysis`）；`submitTaskV1` 已观察到。 |
 | P1b 题包结构解析与状态映射 | 🟡 本地解析器和单元测试已实现；题包版本/题型覆盖及真机匹配待验证 |
 | 独立只读答案层（`docs/09`） | 🟡 目标进程内解析/答案索引/注入式只读面板已实现，面板改为仅显示当前套题 `N. 题干：选项内容` 并支持长按复制，套题名取自只读 Bridge 元数据；构建与单测通过，真机验收未执行 |
 | P2-P5 | ⬜ 未开始；答案写回、自动作答、改分和自动提交不在当前实现范围 |
@@ -44,6 +44,8 @@
 构建产物：`module/build/outputs/apk/debug/module-debug.apk`（纯 LSPosed 模块，无独立 App UI、无 Provider、无 `exported` 组件）。
 
 本机验证构建命令：`./gradlew :module:testDebugUnitTest :module:assembleDebug`。
+
+日志默认输出 Logcat（标签 `UP366-P0`）。此外可开启“结构化日志写入私有目录”（`log_file`，默认关）：模块把同样已脱敏的 NDJSON 事件写入目标 App 私有目录 `files/up366/logs/`，避免 Logcat 单行上限与 `P0CHUNK` 分片重组。日志文件位置会明确给出——启动时和每次在面板打开该开关时都会输出 `log_file_ready` 事件（含绝对路径），面板“日志文件”区显示“已开启/未开启 + 路径”并提供“复制日志文件路径”按钮，打开开关时还会弹出路径提示；**若不可写则显示具体原因码与尝试目录，而非笼统的“不可用”**（`init_not_called` / `files_dir_unavailable` / `mkdirs_failed` / `fallback_external` / `exception:<类名>`），内部目录不可写时自动回退到外部私有目录并标注。`log_raw_bridge`（默认关，仅调试）会额外把无法解析的桥异步回调原始脚本写入同一文件（**含业务数据、只进文件不进 Logcat，用完必须删除**）。
 
 模块 APK 的唯一职责是被 LSPosed 加载进 `com.up366.mobile` 进程；LSPosed 作用域只勾选 `com.up366.mobile`。默认开启“Activity 生命周期”和“注入只读面板”；网络、WebView、桥、探针、题包解析与本地答案索引默认关闭，可在注入面板的“功能开关”里就地开启。日志输出 Logcat 标签 `UP366-P0`。
 

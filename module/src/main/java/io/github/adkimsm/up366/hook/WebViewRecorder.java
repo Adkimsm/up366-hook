@@ -23,7 +23,8 @@ final class WebViewRecorder {
     private WebViewRecorder() {}
 
     static void install(Context context, ClassLoader classLoader) {
-        appContext = context.getApplicationContext();
+        Context app = context == null ? null : context.getApplicationContext();
+        appContext = app != null ? app : context;
         hook("webview_load_url", () -> XposedHelpers.findAndHookMethod(WebView.class, "loadUrl", String.class, new LoadHook()));
         hook("webview_load_url_headers", () -> XposedHelpers.findAndHookMethod(WebView.class, "loadUrl", String.class, java.util.Map.class, new LoadHook()));
         hook("webview_load_data", () -> XposedHelpers.findAndHookMethod(WebView.class, "loadData", String.class, String.class, String.class, new LoadHook()));
@@ -71,6 +72,14 @@ final class WebViewRecorder {
         @Override
         protected void beforeHookedMethod(MethodHookParam param) {
             WebView webView = (WebView) param.thisObject;
+            if (param.args.length > 0 && param.args[0] instanceof String) {
+                String url = (String) param.args[0];
+                // The bridge delivers async results and registered events by evaluating
+                // "javascript:" URLs; inspect them so callbacks can be correlated.
+                if (url.startsWith("javascript:")) {
+                    BridgeRecorder.inspectJavascript(webView, url);
+                }
+            }
             if (!Config.enabled(webView.getContext(), Config.WEBVIEW)) return;
             StringBuilder args = new StringBuilder();
             for (int i = 0; i < param.args.length; i++) {

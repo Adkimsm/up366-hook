@@ -138,6 +138,7 @@ final class InjectedUi {
         final LinearLayout answerSection;
         final LinearLayout versionSection;
         final TextView diagnostics;
+        final TextView logStatus;
         final EditText traceInput;
         final TextView traceResult;
 
@@ -160,6 +161,7 @@ final class InjectedUi {
             versionSection = new LinearLayout(activity);
             versionSection.setOrientation(LinearLayout.VERTICAL);
             diagnostics = new TextView(activity);
+            logStatus = new TextView(activity);
             traceInput = new EditText(activity);
             traceResult = new TextView(activity);
 
@@ -309,6 +311,13 @@ final class InjectedUi {
                     LogSink.diagnostic("panel_toggle_flag", Trace.newTraceId(),
                             Trace.newRequestId(), "ok", "", 0, "key", key,
                             "value", Boolean.toString(checked));
+                    if (Config.LOG_FILE.equals(key) && checked) {
+                        LogFileSink.announce();
+                        String path = LogFileSink.path();
+                        Toast.makeText(context, path.length() == 0
+                                ? "日志不可用：" + LogFileSink.reason()
+                                : "日志写入：" + path, Toast.LENGTH_LONG).show();
+                    }
                 });
                 content.addView(checkBox);
             }
@@ -341,6 +350,14 @@ final class InjectedUi {
             content.addView(section(context, "诊断：最近解析任务"));
             diagnostics.setText("（无数据）");
             content.addView(diagnostics);
+
+            content.addView(section(context, "日志文件"));
+            logStatus.setText("（未初始化）");
+            content.addView(logStatus);
+            Button copyLogPath = new Button(context);
+            copyLogPath.setText("复制日志文件路径");
+            copyLogPath.setOnClickListener(view -> copyToClipboard(LogFileSink.path()));
+            content.addView(copyLogPath);
 
             traceInput.setHint("输入 traceId 查询链路");
             traceInput.setInputType(InputType.TYPE_CLASS_TEXT);
@@ -409,6 +426,19 @@ final class InjectedUi {
                 final String coverageText = "本地答案索引 " + count + " 条（当前套题 "
                         + (snapshot == null ? 0 : snapshot.itemCount()) + " 题）";
                 final String diagnosticsText = events.isEmpty() ? "（无解析任务记录）" : join(events);
+                final String logPath = LogFileSink.path();
+                final String logText;
+                if (logPath.length() == 0) {
+                    String directory = LogFileSink.directoryPath();
+                    logText = "不可用（" + LogFileSink.reason() + "）"
+                            + (directory.length() == 0 ? "" : "\n尝试目录：" + directory);
+                } else {
+                    String mode = LogFileSink.enabled() ? "已开启" : "未开启（路径预览）";
+                    String fallback = LogFileSink.REASON_FALLBACK_EXTERNAL
+                            .equals(LogFileSink.reason())
+                            ? "\n（内部私有目录不可写，已回退到外部私有目录）" : "";
+                    logText = mode + "\n" + logPath + fallback;
+                }
                 MAIN.post(() -> {
                     status.setText("Hook 就绪，processRole=" + LogSink.processRole());
                     coverage.setText(coverageText);
@@ -417,6 +447,7 @@ final class InjectedUi {
                     versionSection.removeAllViews();
                     addVersions(versionSection, versions);
                     diagnostics.setText(diagnosticsText);
+                    logStatus.setText(logText);
                 });
             });
         }
@@ -487,6 +518,8 @@ final class InjectedUi {
         if (Config.QUESTION_METADATA.equals(key)) return "题包结构解析（只读）";
         if (Config.ANSWER_INDEX.equals(key)) return "本地答案索引（只读）";
         if (Config.INJECT_UI.equals(key)) return "注入只读面板";
+        if (Config.LOG_FILE.equals(key)) return "结构化日志写入私有目录";
+        if (Config.LOG_RAW_BRIDGE.equals(key)) return "调试：落原始桥回调脚本（含业务数据，用完删除）";
         return key;
     }
 

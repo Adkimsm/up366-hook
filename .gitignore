@@ -9,4 +9,5 @@ local.properties
 # Raw runtime logs and network captures (contain sensitive metadata)
 result.log
 up366p0-2.log
+up366-*.log
 data/report-api*.txt

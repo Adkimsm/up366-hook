@@ -23,6 +23,8 @@ final class Config {
     static final String QUESTION_METADATA = "question_metadata";
     static final String ANSWER_INDEX = "answer_index";
     static final String INJECT_UI = "inject_ui";
+    static final String LOG_FILE = "log_file";
+    static final String LOG_RAW_BRIDGE = "log_raw_bridge";
 
     /** Persistent UI preference (not a functional hook toggle) for the floating button. */
     static final String HIDE_FLOATING = "hide_floating";
@@ -33,7 +35,8 @@ final class Config {
     static final String TARGET_PACKAGE = "com.up366.mobile";
 
     static final String[] KEYS = {
-            ACTIVITY, NETWORK, WEBVIEW, PROBE, BRIDGE, QUESTION_METADATA, ANSWER_INDEX, INJECT_UI
+            ACTIVITY, NETWORK, WEBVIEW, PROBE, BRIDGE, QUESTION_METADATA, ANSWER_INDEX, INJECT_UI,
+            LOG_FILE, LOG_RAW_BRIDGE
     };
 
     private static final Object LOCK = new Object();

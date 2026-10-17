@@ -78,6 +78,8 @@ public final class A366Module implements IXposedHookLoadPackage {
         if (!INSTALLED.compareAndSet(false, true)) return;
         LogSink.event("context_initialized", "source", source, "package", context.getPackageName());
         try {
+            LogFileSink.init(context);
+            LogFileSink.announce();
             RuntimeClassObserver.install(classLoader);
             ActivityRecorder.install();
             UiInjector.install();
