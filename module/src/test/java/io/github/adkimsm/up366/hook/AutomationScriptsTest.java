@@ -54,7 +54,7 @@ public final class AutomationScriptsTest {
 
     @Test
     public void pageHooksCompressTimersAccelerateClockAndRestore() {
-        String hooks = AutomationScripts.pageHooksScript();
+        String hooks = AutomationScripts.pageHooksScript(SpeedProfile.of(2));
         assertTrue(hooks.contains("window.setTimeout"));
         assertTrue(hooks.contains("window.setInterval"));
         assertTrue(hooks.contains("Date.now"));
@@ -62,6 +62,7 @@ public final class AutomationScriptsTest {
         assertTrue(hooks.contains("timerCalls"));
         assertTrue(hooks.contains("clockCalls"));
         assertTrue(hooks.contains("Math.min(ms,60)"));
+        assertTrue(hooks.contains("speed:40"));
 
         String restore = AutomationScripts.pageHooksRestoreScript();
         assertTrue(restore.contains("window.setTimeout=H.st"));

@@ -9,10 +9,6 @@ import java.util.Map;
  * Android types so the builders are unit-testable.
  */
 final class AutomationScripts {
-    /** Playback rate used while the listening fast-forward is running. */
-    static final String ACCELERATED_RATE = "16.0";
-    /** Clock multiplier used to collapse countdown-style waits. */
-    static final int ACCELERATED_CLOCK = 40;
     private static final java.util.regex.Pattern RATE_FIELD =
             java.util.regex.Pattern.compile("\"rate\"\\s*:\\s*[0-9.]+");
 
@@ -37,15 +33,17 @@ final class AutomationScripts {
      * delays are compressed and the clock is accelerated so countdown-style waits collapse too.
      * Counting the calls tells us whether the waits actually run through the page's JS. Idempotent.
      */
-    static String pageHooksScript() {
+    static String pageHooksScript(SpeedProfile profile) {
+        SpeedProfile safe = profile == null ? SpeedProfile.of(SpeedProfile.DEFAULT_INDEX) : profile;
+        if (!safe.hooksPage()) return "(function(){return 'disabled';})()";
         return "(function(){try{"
                 + "if(window.__up366_hooks){return 'already';}"
                 + "var H={st:window.setTimeout,si:window.setInterval,dn:Date.now,"
                 + "pn:(window.performance&&window.performance.now)?window.performance.now:null,"
-                + "timerCalls:0,clockCalls:0,t0:Date.now(),speed:" + ACCELERATED_CLOCK + "};"
+                + "timerCalls:0,clockCalls:0,t0:Date.now(),speed:" + safe.clock + "};"
                 + "window.__up366_hooks=H;"
-                + "function c(ms){if(typeof ms!=='number'||ms<=60)return ms;"
-                + "return Math.max(15,Math.min(ms,60));}"
+                + "function c(ms){if(typeof ms!=='number'||ms<=" + safe.timerMaxMs + ")return ms;"
+                + "return Math.max(" + safe.timerFloorMs + ",Math.min(ms," + safe.timerMaxMs + "));}"
                 + "window.setTimeout=function(fn,ms){var a=Array.prototype.slice.call(arguments,2);"
                 + "var d=c(ms);if(d!==ms)H.timerCalls++;"
                 + "return H.st.apply(window,[fn,d].concat(a));};"

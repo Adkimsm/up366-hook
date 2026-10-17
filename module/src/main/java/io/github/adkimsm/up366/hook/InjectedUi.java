@@ -422,6 +422,19 @@ final class InjectedUi {
             content.addView(devOutput);
 
             content.addView(section(context, "自动化（默认关，需先打开对应开关）"));
+            Button speedButton = new Button(context);
+            speedButton.setText(speedLabel(activity));
+            speedButton.setOnClickListener(view -> {
+                int next = SpeedProfile.nextIndex(Config.speedProfile(activity));
+                Config.setSpeedProfile(activity, next);
+                speedButton.setText(speedLabel(activity));
+                LogSink.diagnostic("panel_speed_profile", Trace.newTraceId(), Trace.newRequestId(),
+                        "ok", "", 0, "profile", SpeedProfile.of(next).label);
+                Toast.makeText(activity, "速度档：" + SpeedProfile.of(next).describe(),
+                        Toast.LENGTH_SHORT).show();
+            });
+            content.addView(speedButton);
+
             Button fillButton = new Button(context);
             fillButton.setText("一键填答（本地答案 → 点击选项）");
             fillButton.setOnClickListener(view -> runAutoFill());
@@ -679,6 +692,11 @@ final class InjectedUi {
             view.setPadding(0, dp(context, 12), 0, dp(context, 4));
             return view;
         }
+    }
+
+    /** Label for the speed-profile button, e.g. {@code 速度档：快速}. */
+    private static String speedLabel(Context context) {
+        return "速度档：" + SpeedProfile.of(Config.speedProfile(context)).label + "（点击切换）";
     }
 
     private static String flagLabel(String key) {

@@ -184,7 +184,11 @@ final class BridgeRecorder {
                 if (Config.enabled(webView.getContext(), Config.AUTO_ADVANCE)) {
                     // Let the clip play through for real, just much faster, so the page's own
                     // play-count / first-listen logic still runs.
-                    param.args[0] = AutomationScripts.withRate(payload, AutomationScripts.ACCELERATED_RATE);
+                    SpeedProfile profile =
+                            SpeedProfile.of(Config.speedProfile(webView.getContext()));
+                    if (profile.acceleratesPlayback()) {
+                        param.args[0] = AutomationScripts.withRate(payload, profile.rate);
+                    }
                 }
             }
             if (!Config.enabled(webView.getContext(), Config.BRIDGE)) return;

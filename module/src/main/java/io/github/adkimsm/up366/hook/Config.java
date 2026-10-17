@@ -28,6 +28,9 @@ final class Config {
     static final String AUTO_FILL = "auto_fill";
     static final String AUTO_ADVANCE = "auto_advance";
 
+    /** Int-valued preference (not a boolean toggle): index into {@link SpeedProfile#LEVELS}. */
+    static final String SPEED_PROFILE = "speed_profile";
+
     /** Persistent UI preference (not a functional hook toggle) for the floating button. */
     static final String HIDE_FLOATING = "hide_floating";
     static final String FLOAT_X = "float_x";
@@ -125,6 +128,26 @@ final class Config {
 
     static boolean defaultValue(String key) {
         return ACTIVITY.equals(key) || INJECT_UI.equals(key);
+    }
+
+    /** Selected speed profile index; falls back to the packaged default. */
+    static int speedProfile(Context context) {
+        if (context == null) return SpeedProfile.DEFAULT_INDEX;
+        try {
+            return SpeedProfile.clampIndex(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getInt(SPEED_PROFILE, SpeedProfile.DEFAULT_INDEX));
+        } catch (Throwable ignored) {
+            return SpeedProfile.DEFAULT_INDEX;
+        }
+    }
+
+    static void setSpeedProfile(Context context, int index) {
+        if (context == null) return;
+        int safe = SpeedProfile.clampIndex(index);
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putInt(SPEED_PROFILE, safe).apply();
+        LogSink.event("config_updated", "key", SPEED_PROFILE, "value", Integer.toString(safe),
+                "status", "ok");
     }
 
     static boolean isKnownKey(String key) {

@@ -22,9 +22,6 @@ final class Automation {
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
-    private static final long FAST_STEP_MS = 30L;
-    private static final long SLOW_STEP_MS = 120L;
-    private static final long STOP_RETRY_MS = 120L;
     private static final int MAX_STEPS = 1500;
     private static final int SUBMIT_GRACE_STEPS = 12;
 
@@ -68,12 +65,13 @@ final class Automation {
                 deliver(callback, "{\"error\":\"no_webview\"}");
                 return;
             }
-            LogSink.event("auto_advance_start", "prefix",
-                    LogSink.limit(AudioPlayback.callbackPrefix(), 80),
-                    "rate", AutomationScripts.ACCELERATED_RATE);
+            final SpeedProfile profile = SpeedProfile.of(Config.speedProfile(webView.getContext()));
+            LogSink.event("auto_advance_start", "profile", profile.label,
+                    "rate", profile.rate, "clock", Integer.toString(profile.clock),
+                    "prefix", LogSink.limit(AudioPlayback.callbackPrefix(), 80));
             // Compress the page's answer/reading waits for the duration of the run.
-            evaluate(webView, AutomationScripts.pageHooksScript(), clamp -> {
-                Run run = new Run(webView);
+            evaluate(webView, AutomationScripts.pageHooksScript(profile), clamp -> {
+                Run run = new Run(webView, profile);
                 step(webView, run, callback);
             });
         });
@@ -92,7 +90,9 @@ final class Automation {
         }
         MAIN.post(() -> {
             try {
-                webView.evaluateJavascript(AutomationScripts.pageHooksScript(), value -> { });
+                webView.evaluateJavascript(
+                        AutomationScripts.pageHooksScript(SpeedProfile.of(Config.speedProfile(webView.getContext()))),
+                        value -> { });
             } catch (Throwable error) {
                 LogSink.error("automation_page_hooks", error);
             }
@@ -101,6 +101,7 @@ final class Automation {
 
     private static final class Run {
         final WebView webView;
+        final SpeedProfile profile;
         final long startedAt = android.os.SystemClock.elapsedRealtime();
         String targetId = "";
         long targetSetAt = startedAt;
@@ -115,8 +116,9 @@ final class Automation {
         int steps;
         int clickedAtStep = -1;
 
-        Run(WebView webView) {
+        Run(WebView webView, SpeedProfile profile) {
             this.webView = webView;
+            this.profile = profile;
             this.targetSetAt = startedAt;
         }
     }
@@ -135,7 +137,7 @@ final class Automation {
             run.targetAttempts = 0;
             run.audioIds++;
         }
-        boolean fireStop = !run.targetId.isEmpty() && now - run.lastStopAt >= STOP_RETRY_MS;
+        boolean fireStop = !run.targetId.isEmpty() && now - run.lastStopAt >= run.profile.stopRetryMs;
         if (fireStop) {
             run.targetAttempts++;
             run.forcedStops++;
@@ -172,7 +174,7 @@ final class Automation {
                 return;
             }
             MAIN.postDelayed(() -> step(webView, run, callback),
-                    fireStop ? FAST_STEP_MS : SLOW_STEP_MS);
+                    fireStop ? run.profile.fastStepMs : run.profile.slowStepMs);
         });
     }
 
@@ -202,7 +204,8 @@ final class Automation {
                     + ",\"calledTrue\":" + run.calledTrue
                     + ",\"calledFalse\":" + run.calledFalse
                     + ",\"lastVia\":\"" + run.lastVia + "\""
-                    + ",\"rate\":\"" + AutomationScripts.ACCELERATED_RATE + "\""
+                    + ",\"profile\":\"" + run.profile.label + "\""
+                    + ",\"rate\":\"" + run.profile.rate + "\""
                     + ",\"timerCalls\":" + timerCalls
                     + ",\"clockCalls\":" + clockCalls
                     + ",\"audioWaitMs\":" + run.audioWaitMs
