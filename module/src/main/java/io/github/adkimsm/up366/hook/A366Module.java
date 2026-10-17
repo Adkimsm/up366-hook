@@ -80,6 +80,7 @@ public final class A366Module implements IXposedHookLoadPackage {
         try {
             RuntimeClassObserver.install(classLoader);
             ActivityRecorder.install();
+            UiInjector.install();
             OkHttpRecorder.setContext(context);
             QuestionPackageRecorder.install(context);
             WebViewRecorder.install(context, classLoader);

@@ -4,6 +4,7 @@
 **LSPosed 运行时 hook** 的方式搬到 Android 版天学网（`com.up366.mobile`）上。
 
 > P0 运行时侦察已经完成；P1a/P1b 首版只读实现和本地测试已落地，真机回归仍待完成。
+> 独立只读答案层（`docs/09`）已改为“目标进程内解析 + 注入式原生面板”，构建与单测通过，真机验收待执行。
 > 文档先行，目的是让后续任意一次对话（不同 session / 不同人）都能凭本仓库恢复完整上下文。
 
 ---
@@ -20,6 +21,7 @@
 | P0 侦察模块代码 | ✅ 已完成首版骨架（待真机/LSPosed 验证） |
 | P1a 只读运行时观察 | 🟡 代码已实现；需在 LSPosed/天学网上验证异步关联、探针和提交状态 |
 | P1b 题包结构解析与状态映射 | 🟡 本地解析器和单元测试已实现；题包版本/题型覆盖及真机匹配待验证 |
+| 独立只读答案层（`docs/09`） | 🟡 目标进程内解析/答案索引/注入式只读面板已实现，构建与单测通过；真机验收未执行 |
 | P2-P5 | ⬜ 未开始；答案写回、自动作答、改分和自动提交不在当前实现范围 |
 
 ---
@@ -35,13 +37,17 @@
 | `docs/05-risks-open-questions.md` | 风险清单与待验证问题（**每次有新发现都往这里记**） |
 | `docs/06-mt-toolbox.md` | 如何用 MT MCP 工具重读 APK（跨对话复现步骤） |
 | `docs/07-flipbook-recon.md` | 实际听力题包结构、题目数据模型、运行日志对应关系与 P1 开工边界 |
+| `docs/08-module-development-plan.md` | 模块主线开发计划（LSPosed 运行时观察与 WebView 探针） |
+| `docs/09-readonly-question-answer-plan.md` | 独立只看答案层：题包解析、本地答案索引、目标进程内注入式只读面板 |
 | `data/bridge-api.json` | `assets/api.json` 原始副本（桥 API 清单，未改动） |
 
-构建产物：`app/build/outputs/apk/debug/app-debug.apk`（控制 App）、`module/build/outputs/apk/debug/module-debug.apk`（LSPosed 模块）。
+构建产物：`module/build/outputs/apk/debug/module-debug.apk`（纯 LSPosed 模块，无独立 App UI、无 Provider、无 `exported` 组件）。
 
-本机验证构建命令：`./gradlew :app:assembleDebug :module:assembleDebug`。
+本机验证构建命令：`./gradlew :module:testDebugUnitTest :module:assembleDebug`。
 
-首轮安装验证：先安装两个 APK，在 LSPosed 中启用模块，作用域只选择 `com.up366.mobile`；默认仅保持“Activity 生命周期”开关。WebView、桥、探针和题包结构元数据均可单独启用；题包元数据开关默认关闭。日志输出 Logcat 标签 `UP366-P0`。本地验证：`./gradlew :module:testDebugUnitTest :app:assembleDebug :module:assembleDebug`。
+模块 APK 的唯一职责是被 LSPosed 加载进 `com.up366.mobile` 进程；LSPosed 作用域只勾选 `com.up366.mobile`。默认开启“Activity 生命周期”和“注入只读面板”；网络、WebView、桥、探针、题包解析与本地答案索引默认关闭，可在注入面板的“功能开关”里就地开启。日志输出 Logcat 标签 `UP366-P0`。
+
+注入面板：进入天学网后自动在 DecorView 上追加一个不透明的悬浮“答”按钮，可拖动且位置持久化（存目标 App 私有 prefs，清除天学网数据会重置）；点按展开只读面板，包含状态、功能开关、答案覆盖率与列表、维护（清除本地答案索引、隐藏悬浮按钮）、诊断（最近事件与 `traceId`/`requestId` 链路查询）。面板只读，不写 `user_answer`/`saveData`，不触发提交，不注入或修改页面 DOM/JavaScript。
 
 超过 Logcat 单行限制的事件会输出为 `P0CHUNK id=N part=X/Y ...`。重组时按同一个 `id` 的 `part` 顺序拼接前缀后的内容，即可还原原始 JSON 事件。
 
@@ -53,8 +59,7 @@
 
 | 项 | 值 |
 |---|---|
-| 命名空间 / 控制 App 包名 | `io.github.adkimsm.up366` |
-| LSPosed 模块包名（建议，待确认） | `io.github.adkimsm.up366.hook` |
+| 命名空间 / 模块包名 | `io.github.adkimsm.up366.hook` |
 | 目标 App | `com.up366.mobile`（天学网学生 6.0.1 / vc220） |
 | 构建方式 | 用户自行在 Android Studio 编译，本仓库只交付源码 |
 | 日志输出 | Logcat 标签 `UP366-P0` |

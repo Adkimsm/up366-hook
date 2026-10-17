@@ -1,9 +1,6 @@
 package io.github.adkimsm.up366.hook;
 
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.os.Build;
 import android.os.SystemClock;
 import android.webkit.WebView;
 
@@ -15,6 +12,12 @@ import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * Target-process question-package parser. It consumes {@code file://} page URLs observed in the
+ * WebView, parses the already-downloaded question package and writes results straight into the
+ * target process's {@link AnswerStore}. There is no IPC: parsing, indexing and storage all run in
+ * the target process.
+ */
 final class QuestionPackageRecorder {
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "up366-question-metadata");
@@ -26,20 +29,10 @@ final class QuestionPackageRecorder {
 
     private QuestionPackageRecorder() {}
 
+    /** Records readiness of the target-process parser and its target-private store. */
     static void install(Context context) {
         if (context == null) return;
-        try {
-            ConfigReceiver receiver = new ConfigReceiver();
-            IntentFilter filter = new IntentFilter(Broadcasts.CONFIG_CHANGED);
-            if (Build.VERSION.SDK_INT >= 33) {
-                context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
-            } else {
-                context.registerReceiver(receiver, filter);
-            }
-            LogSink.event("config_receiver_registered");
-        } catch (Throwable error) {
-            LogSink.error("register_config_receiver", error);
-        }
+        LogSink.event("question_recorder_ready", "status", "ok");
     }
 
     static void schedule(WebView webView, String pageUrl) {
@@ -52,20 +45,20 @@ final class QuestionPackageRecorder {
         }
         if (!pageFile.isFile()) {
             LogSink.event("question_parse_schedule", "status", "page_file_missing",
-                    "page", pageFile.getAbsolutePath(), "context", TaskContext.snapshot(webView));
+                    "page", LogSink.hash(pageFile.getAbsolutePath()), "context", TaskContext.snapshot(webView));
             return;
         }
         synchronized (LAST_PAGES) {
             String previous = LAST_PAGES.put(webView, pageFile.getAbsolutePath());
             if (pageFile.getAbsolutePath().equals(previous)) {
                 LogSink.event("question_parse_schedule", "status", "duplicate",
-                        "page", pageFile.getAbsolutePath());
+                        "page", LogSink.hash(pageFile.getAbsolutePath()));
                 return;
             }
         }
         final String traceId = Trace.newTraceId();
         LogSink.diagnostic("question_parse_schedule", traceId, "", "queued", "", 0,
-                "page", pageFile.getAbsolutePath(), "context", TaskContext.snapshot(webView));
+                "page", LogSink.hash(pageFile.getAbsolutePath()), "context", TaskContext.snapshot(webView));
         WORKER.execute(() -> parse(webView, pageFile, traceId));
     }
 
@@ -89,17 +82,27 @@ final class QuestionPackageRecorder {
                 AnswerIndexer.Result result = AnswerIndexer.index(pageFile);
                 packageVersion = result.packageVersion;
                 answersPresent = result.report.answersPresent;
-                if (!result.records.isEmpty()) {
-                    IpcClient.indexAnswers(context, result.records, result.packageVersion, traceId);
+                try {
+                    if (context != null && !result.records.isEmpty()) {
+                        int written = AnswerStore.get(context).upsert(result.records);
+                        LogSink.diagnostic("answer_index_built", traceId, "", "ok", "",
+                                SystemClock.elapsedRealtime() - started,
+                                "packageVersionHash", Trace.hash(result.packageVersion),
+                                "written", Integer.toString(written),
+                                "coverage", result.report.toString());
+                    }
+                } catch (Throwable error) {
+                    LogSink.diagnostic("answer_index_built", traceId, "", "failed",
+                            error.getClass().getSimpleName(),
+                            SystemClock.elapsedRealtime() - started,
+                            "packageVersionHash", Trace.hash(result.packageVersion));
+                    LogSink.error("answer_index_write", error);
                 }
-                LogSink.diagnostic("answer_index_built", traceId, "", "ok", "",
-                        SystemClock.elapsedRealtime() - started,
-                        "packageVersionHash", Trace.hash(result.packageVersion),
-                        "coverage", result.report.toString());
             }
             LogSink.diagnostic("question_parsed", traceId, "", "ok", "",
                     SystemClock.elapsedRealtime() - started,
-                    "page", pageFile.getAbsolutePath(),
+                    "page", LogSink.hash(pageFile.getAbsolutePath()),
+                    "pageId", pageId,
                     "context", TaskContext.snapshot(webView),
                     "roots", Integer.toString(roots),
                     "flattened", Integer.toString(flattened.size()),
@@ -107,13 +110,18 @@ final class QuestionPackageRecorder {
                     "answersPresent", Integer.toString(answersPresent),
                     "resources", ListeningResourceMapper.summarize(flattened));
             if (context != null) {
-                IpcClient.reportParseEvent(context, packageVersion, pageId, roots, flattened.size(),
-                        resources.size(), answersPresent, traceId);
+                try {
+                    AnswerStore.get(context).recordParseEvent(System.currentTimeMillis(), traceId,
+                            Trace.hash(packageVersion), pageId, roots, flattened.size(),
+                            resources.size(), answersPresent, "parsed", "");
+                } catch (Throwable error) {
+                    LogSink.error("parse_event_write", error);
+                }
             }
         } catch (Throwable error) {
             LogSink.diagnostic("question_parsed", traceId, "", "failed",
                     error.getClass().getSimpleName(), SystemClock.elapsedRealtime() - started,
-                    "page", pageFile.getAbsolutePath());
+                    "page", LogSink.hash(pageFile.getAbsolutePath()));
             LogSink.error("parse_question_package", error);
         }
     }

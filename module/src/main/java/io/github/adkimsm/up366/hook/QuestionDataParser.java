@@ -49,7 +49,7 @@ final class QuestionDataParser {
                 JSONObject question = pageConfig.optJSONObject("questionObj");
                 if (question != null) expand(question, file, output, 0, "");
             } catch (Throwable error) {
-                LogSink.event("question_parse_error", "file", file.getAbsolutePath(),
+                LogSink.event("question_parse_error", "file", LogSink.hash(file.getAbsolutePath()),
                         "error", error.getClass().getSimpleName() + ": " + LogSink.safe(error.getMessage()));
             }
         }

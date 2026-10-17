@@ -5,8 +5,12 @@ import android.os.Process;
 import android.util.Log;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.Deque;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -15,6 +19,10 @@ import java.util.concurrent.atomic.AtomicLong;
 final class LogSink {
     private static final String TAG = "UP366-P0";
     private static final int MAX_LOG_CHARS = 3000;
+
+    /** Bounded in-memory ring buffer, queried by the injected panel. Never written to disk. */
+    private static final int RING_CAPACITY = 200;
+    private static final Deque<RingEntry> RING = new ArrayDeque<>();
     private static final AtomicLong CHUNK_IDS = new AtomicLong();
     private static final Pattern SECRET = Pattern.compile(
             "(?i)(\\\"?(?:access[_-]?token|refresh[_-]?token|token|authorization|cookie|password|passwd|secret|phone|mobile|idcard|user[_-]?answer|answer(?:[_-]?text)?|score|user[_-]?score|timestamp|duration|record[_-]?url)\\\"?\\s*[:=]\\s*\\\"?)[^\\\",&}\\s]+"
@@ -48,10 +56,60 @@ final class LogSink {
         field(json, "sdk", Integer.toString(Build.VERSION.SDK_INT));
         field(json, "processRole", processRole);
         field(json, "event", event);
-        for (int i = 0; i + 1 < fields.length; i += 2) field(json, fields[i], fields[i + 1]);
+        String traceId = null;
+        String requestId = null;
+        for (int i = 0; i + 1 < fields.length; i += 2) {
+            field(json, fields[i], fields[i + 1]);
+            if ("traceId".equals(fields[i])) traceId = fields[i + 1];
+            else if ("requestId".equals(fields[i])) requestId = fields[i + 1];
+        }
         json.append('}');
-        emit(json.toString());
+        String line = json.toString();
+        record(event, line, traceId, requestId);
+        emit(line);
     }
+
+    /** Records every emitted diagnostic into the bounded ring buffer, in emission order. */
+    private static void record(String event, String line, String traceId, String requestId) {
+        synchronized (RING) {
+            RING.addLast(new RingEntry(event, line,
+                    traceId == null ? "" : traceId,
+                    requestId == null ? "" : requestId));
+            while (RING.size() > RING_CAPACITY) RING.removeFirst();
+        }
+    }
+
+    /** Newest-first snapshot of recorded events, most recent first, capped at {@code limit}. */
+    static List<String> recentEvents(int limit) {
+        List<String> result = new ArrayList<>();
+        synchronized (RING) {
+            java.util.Iterator<RingEntry> iterator = RING.descendingIterator();
+            while (iterator.hasNext() && result.size() < Math.max(1, limit)) {
+                result.add(iterator.next().line);
+            }
+        }
+        return result;
+    }
+
+    /** Chronological lines whose {@code traceId} matches, for one flow's chain query. */
+    static List<String> eventsForTrace(String traceId) {
+        List<String> result = new ArrayList<>();
+        if (traceId == null || traceId.length() == 0) return result;
+        synchronized (RING) {
+            for (RingEntry entry : RING) {
+                if (traceId.equals(entry.traceId)) result.add(entry.line);
+            }
+        }
+        return result;
+    }
+
+    /** Clears the in-memory ring buffer; used by the panel's log maintenance action. */
+    static void clearBuffer() {
+        synchronized (RING) {
+            RING.clear();
+        }
+    }
+
 
     /**
      * Emits a structured diagnostic carrying the shared cross-process fields. Events without a
@@ -183,5 +241,20 @@ final class LogSink {
 
     private static String shortHash(String value) {
         return hash(value);
+    }
+
+    /** One recorded diagnostic line keyed by its correlation identifiers. */
+    private static final class RingEntry {
+        final String event;
+        final String line;
+        final String traceId;
+        final String requestId;
+
+        RingEntry(String event, String line, String traceId, String requestId) {
+            this.event = event;
+            this.line = line;
+            this.traceId = traceId;
+            this.requestId = requestId;
+        }
     }
 }

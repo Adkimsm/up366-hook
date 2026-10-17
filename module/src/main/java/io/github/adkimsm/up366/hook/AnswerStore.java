@@ -11,8 +11,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Answer and parse-summary storage owned by the module process. The hooked target process can only
- * write through {@link HookStatusProvider}; it never opens this database directly.
+ * Answer and parse-summary storage owned by the target process. The database lives in the target
+ * app's private directory and is opened only from inside the hooked target process; there is no
+ * provider, IPC or exported surface. Cleared together with the target app's data.
  */
 final class AnswerStore extends SQLiteOpenHelper {
     private static final String NAME = "up366_answers.db";
@@ -128,6 +129,23 @@ final class AnswerStore extends SQLiteOpenHelper {
         }
         return database.delete(TABLE_ANSWERS, "package_version=?",
                 new String[]{packageVersion});
+    }
+
+    /** Distinct package versions currently holding answer records, newest insertion order first. */
+    List<String> packageVersions() {
+        List<String> versions = new ArrayList<>();
+        SQLiteDatabase database = getReadableDatabase();
+        try (Cursor cursor = database.rawQuery("SELECT DISTINCT package_version FROM "
+                + TABLE_ANSWERS + " WHERE package_version IS NOT NULL"
+                + " AND package_version <> '' ORDER BY package_version ASC", null)) {
+            while (cursor.moveToNext()) {
+                String version = cursor.getString(0);
+                if (version != null && version.length() > 0) versions.add(version);
+            }
+        } catch (Throwable ignored) {
+            return Collections.emptyList();
+        }
+        return versions;
     }
 
     void recordParseEvent(long observedAt, String traceId, String packageVersionHash,
