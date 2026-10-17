@@ -57,6 +57,17 @@ public final class PageDevToolsScriptsTest {
     }
 
     @Test
+    public void reportsAncestorPathAndSlideMembership() {
+        String gate = PageDevToolsScripts.gateOverview();
+        assertTrue(gate.contains("firstOptPath"));
+        assertTrue(gate.contains("firstOptSlide"));
+        assertTrue(gate.contains("detail:slideStats()"));
+        assertTrue(gate.contains("preview:"));
+        assertTrue(PageDevToolsScripts.styles(".u3-qst-opt").contains("path:pathOf(el)"));
+        assertTrue(PageDevToolsScripts.outline("body").contains("path:pathOf(root)"));
+    }
+
+    @Test
     public void locateIsReadOnlyAndReportsTheContentScoreInputs() {
         String script = PageDevToolsScripts.locate();
         for (String key : new String[]{"qst", "opts", "sel", "card", "audio", "slides", "bodyLen", "enterView"}) {

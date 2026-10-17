@@ -4,11 +4,27 @@ package io.github.adkimsm.up366.hook;
  * Read-only JavaScript builders for the in-panel developer tools. They only read the live DOM and
  * computed styles, never click, mutate or call business bridge methods, and always bound their
  * output. Kept free of Android types so the escaping and script shape are unit-testable.
+ *
+ * <p>The scripts deliberately report the <em>ancestor path</em> and per-swiper-slide distribution:
+ * the practice page renders the same questions in a preview list and in the answering area, so a
+ * bare count cannot tell which structure a node belongs to.
  */
 final class PageDevToolsScripts {
     static final String DEFAULT_SELECTOR = "body";
     static final int MAX_DEPTH = 8;
     static final int MAX_NODES = 400;
+
+    /** Shared helpers: bounded ancestor path and nearest swiper-slide classification. */
+    private static final String HELPERS =
+            "function pathOf(el){var out=[],n=el,d=0;while(n&&n.nodeType===1&&d<12){"
+                    + "var cls='';if(typeof n.className==='string'&&n.className){"
+                    + "cls='.'+n.className.trim().split(/\\s+/).slice(0,3).join('.');}"
+                    + "out.unshift(String(n.tagName||'').toLowerCase()+(n.id?'#'+n.id:'')+cls);"
+                    + "n=n.parentElement;d++;}return out.join(' > ');}"
+                    + "function slideOf(el){var n=el;while(n&&n.nodeType===1){"
+                    + "if(n.classList&&n.classList.contains('swiper-slide')){"
+                    + "return n.classList.contains('swiper-slide-active')?'active':'inactive';}"
+                    + "n=n.parentElement;}return 'none';}";
 
     private PageDevToolsScripts() {}
 
@@ -36,7 +52,7 @@ final class PageDevToolsScripts {
     }
 
     static String outline(String selector, int maxDepth, int maxNodes) {
-        return "(function(){try{"
+        return "(function(){try{" + HELPERS
                 + "var sel=" + jsString(selector) + ";"
                 + "var root=null;try{root=document.querySelector(sel);}catch(e){"
                 + "return JSON.stringify({selector:sel,error:'bad_selector'});}"
@@ -54,13 +70,14 @@ final class PageDevToolsScripts {
                 + "if(d>=MAXD){if(el.children.length){lines.push(pad(d+1)+'... '+el.children.length+' children');}return;}"
                 + "for(var i=0;i<el.children.length;i++)walk(el.children[i],d+1);}"
                 + "walk(root,0);"
-                + "return JSON.stringify({selector:sel,found:true,nodes:n,truncated:truncated,lines:lines});"
+                + "return JSON.stringify({selector:sel,found:true,path:pathOf(root),slide:slideOf(root),"
+                + "nodes:n,truncated:truncated,lines:lines});"
                 + "}catch(e){return JSON.stringify({error:String(e&&e.message||e)});}})()";
     }
 
-    /** Computed style and visibility of the first node matching the selector. */
+    /** Computed style, ancestor path and slide membership of the first node matching the selector. */
     static String styles(String selector) {
-        return "(function(){try{"
+        return "(function(){try{" + HELPERS
                 + "var sel=" + jsString(selector) + ";"
                 + "var el=null;try{el=document.querySelector(sel);}catch(e){"
                 + "return JSON.stringify({selector:sel,error:'bad_selector'});}"
@@ -68,6 +85,7 @@ final class PageDevToolsScripts {
                 + "var s=getComputedStyle(el),r=el.getBoundingClientRect();"
                 + "return JSON.stringify({selector:sel,found:true,tag:el.tagName,id:el.id||'',"
                 + "cls:(typeof el.className==='string'?el.className:''),"
+                + "path:pathOf(el),slide:slideOf(el),"
                 + "display:s.display,visibility:s.visibility,pointerEvents:s.pointerEvents,"
                 + "opacity:s.opacity,offsetParent:!!el.offsetParent,"
                 + "rect:{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)}});"
@@ -88,23 +106,37 @@ final class PageDevToolsScripts {
                 + "}catch(e){return JSON.stringify({error:String(e&&e.message||e)});}})()";
     }
 
-    /** Compact read-only state overview used to pin down the listening/submit gating. */
+    /**
+     * Compact read-only state overview: gate counters, the answer-card/submit state, and a per-slide
+     * breakdown so preview and answering structures can be told apart.
+     */
     static String gateOverview() {
-        return "(function(){try{"
+        return "(function(){try{" + HELPERS
                 + "function q(sel){try{return document.querySelectorAll(sel).length}catch(e){return -1}}"
                 + "function st(sel){try{var e=document.querySelector(sel);if(!e)return 'absent';"
                 + "var s=getComputedStyle(e);"
                 + "return s.display+'/'+s.visibility+'/'+s.pointerEvents+'/'+(e.offsetParent?'visible':'hidden');"
                 + "}catch(e){return 'err'}}"
                 + "function peNone(sel){try{var els=document.querySelectorAll(sel),n=0;"
-                + "for(var i=0;i<els.length&&i<200;i++){"
+                + "for(var i=0;i<els.length&&i<300;i++){"
                 + "if(getComputedStyle(els[i]).pointerEvents==='none')n++;}return n}catch(e){return -1}}"
                 + "function optIds(){try{var els=document.querySelectorAll('[u3-opt-id]'),out=[];"
                 + "for(var i=0;i<els.length&&out.length<8;i++){var v=els[i].getAttribute('u3-opt-id');"
                 + "if(v&&out.indexOf(v)<0)out.push(v);}return out}catch(e){return []}}"
+                + "function slideStats(){try{var slides=document.querySelectorAll('.swiper-slide'),out=[];"
+                + "for(var i=0;i<slides.length&&i<12;i++){var s=slides[i];"
+                + "var opts=s.querySelectorAll('.u3-qst-opt'),sel=s.querySelectorAll('.u3-qst-opt.u3-selected'),pe=0;"
+                + "for(var j=0;j<opts.length&&j<200;j++){"
+                + "if(getComputedStyle(opts[j]).pointerEvents==='none')pe++;}"
+                + "out.push({i:i,active:s.classList.contains('swiper-slide-active'),"
+                + "qst:s.querySelectorAll('.u3compo-qst').length,opts:opts.length,selected:sel.length,"
+                + "optPointerNone:pe,preview:s.querySelectorAll('.questionPreviewList,[class*=preview]').length,"
+                + "cls:(typeof s.className==='string'?s.className.slice(0,60):'')});}return out}catch(e){return []}}"
                 + "var audio=[];try{var as=document.querySelectorAll('audio');"
                 + "for(var i=0;i<as.length&&i<5;i++){var a=as[i];audio.push({paused:a.paused,ended:a.ended,"
                 + "t:Math.round((a.currentTime||0)*10)/10,d:Math.round((a.duration||0)*10)/10});}}catch(e){}"
+                + "var firstOpt=null;try{firstOpt=document.querySelector('.u3-qst-opt');}catch(e){}"
+                + "var firstQst=null;try{firstQst=document.querySelector('.u3compo-qst');}catch(e){}"
                 + "return JSON.stringify({"
                 + "url:location.href,ready:document.readyState,visibility:document.visibilityState,"
                 + "bodyLen:(function(){try{return Math.min((document.body&&document.body.textContent"
@@ -114,11 +146,15 @@ final class PageDevToolsScripts {
                 + "single:q('.u3compo-singlechoice'),opts:q('.u3-qst-opt'),"
                 + "selected:q('.u3-qst-opt.u3-selected'),withOptId:q('[u3-opt-id]'),"
                 + "optPointerNone:peNone('.u3-qst-opt'),qstPointerNone:peNone('.u3compo-qst'),"
-                + "optIds:optIds()},"
+                + "optIds:optIds(),"
+                + "firstOptPath:firstOpt?pathOf(firstOpt):'absent',"
+                + "firstOptSlide:firstOpt?slideOf(firstOpt):'absent',"
+                + "firstQstPath:firstQst?pathOf(firstQst):'absent'},"
+                + "preview:{list:q('.questionPreviewList'),any:q('[class*=preview]')},"
                 + "submit:{card:q('.u3compo-answercard'),btn:q('.u3-submit'),style:st('.u3-submit')},"
                 + "popup:q('.u3compo-popup'),"
                 + "audio:{els:q('audio'),state:audio,medias:q('.u3-audio'),playBtns:q('.u3-mplay-btn')},"
-                + "slides:{all:q('.swiper-slide'),active:q('.swiper-slide-active')},"
+                + "slides:{all:q('.swiper-slide'),active:q('.swiper-slide-active'),detail:slideStats()},"
                 + "nav:{next:q('.u3-pagination-buttion-next'),nextDisabled:q('.u3-pagination-buttion-next.u3-disable')}"
                 + "});"
                 + "}catch(e){return JSON.stringify({error:String(e&&e.message||e)});}})()";
