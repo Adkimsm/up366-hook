@@ -139,6 +139,11 @@ final class WebViewRecorder {
                 // always target the last loaded local practice page.
                 PageDevTools.register(webView, url);
             }
+            if ("page_started".equals(event) && url.startsWith("file://")) {
+                // Installed before the page's own scripts run, so its captured timer references are
+                // already compressed while auto_advance is switched on.
+                Automation.installPageHooks(webView);
+            }
             boolean logWebView = Config.enabled(webView.getContext(), Config.WEBVIEW);
             boolean probe = Config.enabled(webView.getContext(), Config.PROBE);
             boolean questionMetadata = Config.enabled(webView.getContext(), Config.QUESTION_METADATA);

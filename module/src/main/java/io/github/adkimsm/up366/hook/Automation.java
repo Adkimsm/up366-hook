@@ -72,10 +72,30 @@ final class Automation {
                     LogSink.limit(AudioPlayback.callbackPrefix(), 80),
                     "rate", AutomationScripts.ACCELERATED_RATE);
             // Compress the page's answer/reading waits for the duration of the run.
-            evaluate(webView, AutomationScripts.timerClampScript(), clamp -> {
+            evaluate(webView, AutomationScripts.pageHooksScript(), clamp -> {
                 Run run = new Run(webView);
                 step(webView, run, callback);
             });
+        });
+    }
+
+    /**
+     * Installs the page hooks as early as possible (page start) so the page's own captured timer
+     * references are already compressed. Only active while {@code auto_advance} is switched on.
+     */
+    static void installPageHooks(final WebView webView) {
+        if (webView == null) return;
+        try {
+            if (!Config.enabled(webView.getContext(), Config.AUTO_ADVANCE)) return;
+        } catch (Throwable ignored) {
+            return;
+        }
+        MAIN.post(() -> {
+            try {
+                webView.evaluateJavascript(AutomationScripts.pageHooksScript(), value -> { });
+            } catch (Throwable error) {
+                LogSink.error("automation_page_hooks", error);
+            }
         });
     }
 
@@ -164,25 +184,38 @@ final class Automation {
 
     private static void finish(Callback callback, Run run, String reason) {
         BUSY.set(false);
-        evaluate(run.webView, AutomationScripts.timerRestoreScript(), restored -> { });
-        long elapsed = android.os.SystemClock.elapsedRealtime() - run.startedAt;
-        long average = run.audioIds == 0 ? 0 : elapsed / run.audioIds;
-        String summary = "{\"reason\":\"" + reason + "\",\"audioIds\":" + run.audioIds
-                + ",\"forcedStops\":" + run.forcedStops
-                + ",\"calledTrue\":" + run.calledTrue
-                + ",\"calledFalse\":" + run.calledFalse
-                + ",\"lastVia\":\"" + run.lastVia + "\""
-                + ",\"rate\":\"" + AutomationScripts.ACCELERATED_RATE + "\""
-                + ",\"steps\":" + run.steps
-                + ",\"elapsedMs\":" + elapsed
-                + ",\"avgPerSectionMs\":" + average + "}";
-        LogSink.event("auto_advance_result", "reason", reason,
-                "audio_ids", Integer.toString(run.audioIds),
-                "forced_stops", Integer.toString(run.forcedStops),
-                "called_true", Integer.toString(run.calledTrue),
-                "called_false", Integer.toString(run.calledFalse),
-                "elapsed_ms", Long.toString(elapsed));
-        deliver(callback, summary);
+        evaluate(run.webView, AutomationScripts.pageHooksRestoreScript(), restored -> {
+            int timerCalls = counter(restored, "timerCalls");
+            int clockCalls = counter(restored, "clockCalls");
+            long elapsed = android.os.SystemClock.elapsedRealtime() - run.startedAt;
+            long average = run.audioIds == 0 ? 0 : elapsed / run.audioIds;
+            String summary = "{\"reason\":\"" + reason + "\",\"audioIds\":" + run.audioIds
+                    + ",\"forcedStops\":" + run.forcedStops
+                    + ",\"calledTrue\":" + run.calledTrue
+                    + ",\"calledFalse\":" + run.calledFalse
+                    + ",\"lastVia\":\"" + run.lastVia + "\""
+                    + ",\"rate\":\"" + AutomationScripts.ACCELERATED_RATE + "\""
+                    + ",\"timerCalls\":" + timerCalls
+                    + ",\"clockCalls\":" + clockCalls
+                    + ",\"steps\":" + run.steps
+                    + ",\"elapsedMs\":" + elapsed
+                    + ",\"avgPerSectionMs\":" + average + "}";
+            LogSink.event("auto_advance_result", "reason", reason,
+                    "audio_ids", Integer.toString(run.audioIds),
+                    "forced_stops", Integer.toString(run.forcedStops),
+                    "timer_calls", Integer.toString(timerCalls),
+                    "clock_calls", Integer.toString(clockCalls),
+                    "elapsed_ms", Long.toString(elapsed));
+            deliver(callback, summary);
+        });
+    }
+
+    private static int counter(String json, String name) {
+        try {
+            return new org.json.JSONObject(json).optInt(name, 0);
+        } catch (Throwable ignored) {
+            return 0;
+        }
     }
 
     private static void deliver(Callback callback, String json) {

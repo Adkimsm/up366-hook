@@ -11,6 +11,8 @@ import java.util.Map;
 final class AutomationScripts {
     /** Playback rate used while the listening fast-forward is running. */
     static final String ACCELERATED_RATE = "8.0";
+    /** Clock multiplier used to collapse countdown-style waits. */
+    static final int ACCELERATED_CLOCK = 20;
     private static final java.util.regex.Pattern RATE_FIELD =
             java.util.regex.Pattern.compile("\"rate\"\\s*:\\s*[0-9.]+");
 
@@ -31,28 +33,50 @@ final class AutomationScripts {
     }
 
     /**
-     * Compresses the page's {@code setTimeout} delays for the duration of the run (keeps a small
-     * floor so ordering is preserved). The original function is saved for {@link #timerRestoreScript}.
+     * Installs the page hooks used by the fast-forward: long {@code setTimeout}/{@code setInterval}
+     * delays are compressed and the clock is accelerated so countdown-style waits collapse too.
+     * Counting the calls tells us whether the waits actually run through the page's JS. Idempotent.
      */
-    static String timerClampScript() {
+    static String pageHooksScript() {
         return "(function(){try{"
-                + "if(window.__up366_timer){return 'already';}"
-                + "var st=window.setTimeout;"
-                + "window.__up366_timer={st:st};"
-                + "window.setTimeout=function(fn,ms){"
-                + "var a=Array.prototype.slice.call(arguments,2);"
-                + "var d=Math.max(20,Math.min(typeof ms==='number'?ms:0,80));"
-                + "return st.apply(window,[fn,d].concat(a));};"
+                + "if(window.__up366_hooks){return 'already';}"
+                + "var H={st:window.setTimeout,si:window.setInterval,dn:Date.now,"
+                + "pn:(window.performance&&window.performance.now)?window.performance.now:null,"
+                + "timerCalls:0,clockCalls:0,t0:Date.now(),speed:" + ACCELERATED_CLOCK + "};"
+                + "window.__up366_hooks=H;"
+                + "function c(ms){if(typeof ms!=='number'||ms<=100)return ms;"
+                + "return Math.max(30,Math.min(ms,120));}"
+                + "window.setTimeout=function(fn,ms){var a=Array.prototype.slice.call(arguments,2);"
+                + "var d=c(ms);if(d!==ms)H.timerCalls++;"
+                + "return H.st.apply(window,[fn,d].concat(a));};"
+                + "window.setInterval=function(fn,ms){var a=Array.prototype.slice.call(arguments,2);"
+                + "var d=c(ms);if(d!==ms)H.timerCalls++;"
+                + "return H.si.apply(window,[fn,d].concat(a));};"
+                + "Date.now=function(){H.clockCalls++;"
+                + "return H.t0+(H.dn.call(Date)-H.t0)*H.speed;};"
+                + "try{if(H.pn&&window.performance){window.performance.now=function(){"
+                + "H.clockCalls++;return H.pn.call(window.performance)*H.speed;};}}catch(e){}"
                 + "return 'ok';"
                 + "}catch(e){return 'err';}})()";
     }
 
-    /** Restores the original {@code setTimeout}. */
-    static String timerRestoreScript() {
+    /** Restores every hooked function and returns the call counters as JSON. */
+    static String pageHooksRestoreScript() {
         return "(function(){try{"
-                + "var t=window.__up366_timer;if(!t)return 'none';"
-                + "window.setTimeout=t.st;delete window.__up366_timer;return 'restored';"
-                + "}catch(e){return 'err';}})()";
+                + "var H=window.__up366_hooks;if(!H)return '{\"timerCalls\":0,\"clockCalls\":0}';"
+                + "window.setTimeout=H.st;window.setInterval=H.si;Date.now=H.dn;"
+                + "try{if(H.pn&&window.performance){window.performance.now=H.pn;}}catch(e){}"
+                + "delete window.__up366_hooks;"
+                + "return JSON.stringify({timerCalls:H.timerCalls,clockCalls:H.clockCalls});"
+                + "}catch(e){return '{\"timerCalls\":-1,\"clockCalls\":-1}';}})()";
+    }
+
+    /** Reads the page-hook counters without restoring anything. */
+    static String pageHooksStatsScript() {
+        return "(function(){try{var H=window.__up366_hooks;"
+                + "if(!H)return '{\"timerCalls\":0,\"clockCalls\":0}';"
+                + "return JSON.stringify({timerCalls:H.timerCalls,clockCalls:H.clockCalls});"
+                + "}catch(e){return '{\"timerCalls\":-1,\"clockCalls\":-1}';}})()";
     }
 
     /**

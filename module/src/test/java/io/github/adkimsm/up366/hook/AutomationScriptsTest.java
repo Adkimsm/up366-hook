@@ -53,15 +53,23 @@ public final class AutomationScriptsTest {
     }
 
     @Test
-    public void timerScriptsClampAndRestoreSetTimeout() {
-        String clamp = AutomationScripts.timerClampScript();
-        assertTrue(clamp.contains("window.setTimeout"));
-        assertTrue(clamp.contains("__up366_timer"));
-        assertTrue(clamp.contains("Math.min"));
+    public void pageHooksCompressTimersAccelerateClockAndRestore() {
+        String hooks = AutomationScripts.pageHooksScript();
+        assertTrue(hooks.contains("window.setTimeout"));
+        assertTrue(hooks.contains("window.setInterval"));
+        assertTrue(hooks.contains("Date.now"));
+        assertTrue(hooks.contains("performance.now"));
+        assertTrue(hooks.contains("timerCalls"));
+        assertTrue(hooks.contains("clockCalls"));
+        assertTrue(hooks.contains("Math.min(ms,120)"));
 
-        String restore = AutomationScripts.timerRestoreScript();
-        assertTrue(restore.contains("window.setTimeout=t.st"));
-        assertTrue(restore.contains("delete window.__up366_timer"));
+        String restore = AutomationScripts.pageHooksRestoreScript();
+        assertTrue(restore.contains("window.setTimeout=H.st"));
+        assertTrue(restore.contains("window.setInterval=H.si"));
+        assertTrue(restore.contains("Date.now=H.dn"));
+        assertTrue(restore.contains("delete window.__up366_hooks"));
+
+        assertTrue(AutomationScripts.pageHooksStatsScript().contains("clockCalls"));
     }
 
     @Test
