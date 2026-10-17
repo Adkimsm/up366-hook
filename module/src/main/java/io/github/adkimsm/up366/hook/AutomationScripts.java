@@ -54,15 +54,18 @@ final class AutomationScripts {
     }
 
     /**
-     * Rebuilds the native "this audio finished" callback by locating the page's own handler. The
-     * page registers {@code onAudioStateChangeV1} on the bridge facade it received ({@code
-     * window.jsObj} or {@code window.jsChapterObj}) and, in the UMD build, on the global object; all
-     * candidates are probed and the first one that answers is used. The page's handler then emits
-     * {@code stop}, which unlocks the section and advances the slide.
+     * Rebuilds the native "this audio finished" callback. The exact call form is taken from the
+     * captured prefix when it is a safe expression (for example {@code window.onAudioStateChangeV1&&}
+     * yields {@code window.onAudioStateChangeV1&&onAudioStateChangeV1(payload)}); otherwise the page
+     * facades and the global function are probed. The page's handler then emits {@code stop}, which
+     * unlocks the section and advances the slide.
      */
-    static String forceStopScript(String audioId) {
+    static String forceStopScript(String audioId, String capturedPrefix) {
+        String exact = exactCallExpression(capturedPrefix);
         return "(function(){try{"
                 + "var payload=" + forceStopPayload(audioId) + ";"
+                + (exact == null ? "" : "try{" + exact
+                        + ";return JSON.stringify({called:true,via:'exact'});}catch(e){}")
                 + "var objs=[window.jsObj,window.jsChapterObj,window._android_js_obj_];"
                 + "for(var i=0;i<objs.length;i++){var o=objs[i];try{"
                 + "if(o&&typeof o.onAudioStateChangeV1==='function'){"
@@ -74,6 +77,27 @@ final class AutomationScripts {
                 + "return JSON.stringify({called:true,via:'global'});}}catch(e){}"
                 + "return JSON.stringify({called:false});"
                 + "}catch(e){return JSON.stringify({error:String(e&&e.message||e)});}})()";
+    }
+
+    /** Full call expression rebuilt from the captured prefix, or {@code null} when unsafe. */
+    static String exactCallExpression(String capturedPrefix) {
+        if (!isSafePrefix(capturedPrefix)) return null;
+        return capturedPrefix + "onAudioStateChangeV1(payload)";
+    }
+
+    /** Accepts only short, expression-safe prefixes (letters, digits, dots, brackets and operators). */
+    static boolean isSafePrefix(String capturedPrefix) {
+        if (capturedPrefix == null) return false;
+        String prefix = capturedPrefix.trim();
+        if (prefix.isEmpty() || prefix.length() > 80) return false;
+        for (int i = 0; i < prefix.length(); i++) {
+            char c = prefix.charAt(i);
+            boolean allowed = Character.isLetterOrDigit(c)
+                    || c == '_' || c == '$' || c == '.' || c == '[' || c == ']'
+                    || c == '&' || c == '|' || c == '!' || c == '?';
+            if (!allowed) return false;
+        }
+        return true;
     }
 
     static String forceStopPayload(String audioId) {

@@ -5,9 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.webkit.WebView;
 
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -24,10 +22,11 @@ final class Automation {
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
-    private static final long STEP_DELAY_MS = 120L;
-    private static final int MAX_STEPS = 1200;
-    private static final int MAX_FORCE_STOPS = 40;
-    private static final int SUBMIT_GRACE_STEPS = 10;
+    private static final long FAST_STEP_MS = 60L;
+    private static final long SLOW_STEP_MS = 200L;
+    private static final long STOP_RETRY_MS = 250L;
+    private static final int MAX_STEPS = 1500;
+    private static final int SUBMIT_GRACE_STEPS = 12;
 
     private Automation() {}
 
@@ -76,9 +75,15 @@ final class Automation {
     }
 
     private static final class Run {
-        final Set<String> seenAudioIds = new HashSet<>();
+        final long startedAt = android.os.SystemClock.elapsedRealtime();
+        String targetId = "";
+        int targetAttempts;
+        long lastStopAt;
+        int audioIds;
         int forcedStops;
-        int targetMisses;
+        int calledTrue;
+        int calledFalse;
+        String lastVia = "";
         int steps;
         int clickedAtStep = -1;
     }
@@ -88,23 +93,36 @@ final class Automation {
             finish(callback, run, "max_steps");
             return;
         }
+        long now = android.os.SystemClock.elapsedRealtime();
         String audioId = AudioPlayback.currentId();
-        boolean fireStop = audioId != null && !audioId.isEmpty()
-                && !run.seenAudioIds.contains(audioId) && run.forcedStops < MAX_FORCE_STOPS;
+        if (audioId != null && !audioId.isEmpty() && !audioId.equals(run.targetId)) {
+            run.targetId = audioId;
+            run.targetAttempts = 0;
+            run.audioIds++;
+        }
+        boolean fireStop = !run.targetId.isEmpty() && now - run.lastStopAt >= STOP_RETRY_MS;
         if (fireStop) {
-            run.seenAudioIds.add(audioId);
+            run.targetAttempts++;
             run.forcedStops++;
+            run.lastStopAt = now;
         }
         String script = fireStop
-                ? AutomationScripts.forceStopScript(audioId)
+                ? AutomationScripts.forceStopScript(run.targetId, AudioPlayback.callbackPrefix())
                 : AutomationScripts.submitScript(run.clickedAtStep < 0);
         evaluate(webView, script, json -> {
-            if (fireStop && json != null && json.contains("\"called\":false")) {
-                run.targetMisses++;
-                if (run.targetMisses >= 3) {
-                    finish(callback, run, "callback_target_missing");
-                    return;
+            if (fireStop) {
+                boolean called = json != null && json.contains("\"called\":true");
+                if (called) {
+                    run.calledTrue++;
+                    int via = json.indexOf("\"via\":\"");
+                    if (via >= 0) run.lastVia = json.substring(via + 7, Math.min(json.length(), via + 20));
+                } else {
+                    run.calledFalse++;
                 }
+                LogSink.ringOnly("auto_advance_step", "id", Trace.hash(run.targetId),
+                        "attempt", Integer.toString(run.targetAttempts),
+                        "called", Boolean.toString(called),
+                        "result", LogSink.limit(json, 80));
             }
             if (json != null && json.contains("\"clicked\":true") && run.clickedAtStep < 0) {
                 run.clickedAtStep = run.steps;
@@ -118,7 +136,8 @@ final class Automation {
                 finish(callback, run, "clicked");
                 return;
             }
-            MAIN.postDelayed(() -> step(webView, run, callback), STEP_DELAY_MS);
+            MAIN.postDelayed(() -> step(webView, run, callback),
+                    fireStop ? FAST_STEP_MS : SLOW_STEP_MS);
         });
     }
 
@@ -135,11 +154,22 @@ final class Automation {
 
     private static void finish(Callback callback, Run run, String reason) {
         BUSY.set(false);
-        String summary = "{\"reason\":\"" + reason + "\",\"forcedStops\":" + run.forcedStops
-                + ",\"steps\":" + run.steps + ",\"audioIds\":" + run.seenAudioIds.size() + "}";
+        long elapsed = android.os.SystemClock.elapsedRealtime() - run.startedAt;
+        long average = run.audioIds == 0 ? 0 : elapsed / run.audioIds;
+        String summary = "{\"reason\":\"" + reason + "\",\"audioIds\":" + run.audioIds
+                + ",\"forcedStops\":" + run.forcedStops
+                + ",\"calledTrue\":" + run.calledTrue
+                + ",\"calledFalse\":" + run.calledFalse
+                + ",\"lastVia\":\"" + run.lastVia + "\""
+                + ",\"steps\":" + run.steps
+                + ",\"elapsedMs\":" + elapsed
+                + ",\"avgPerSectionMs\":" + average + "}";
         LogSink.event("auto_advance_result", "reason", reason,
+                "audio_ids", Integer.toString(run.audioIds),
                 "forced_stops", Integer.toString(run.forcedStops),
-                "steps", Integer.toString(run.steps));
+                "called_true", Integer.toString(run.calledTrue),
+                "called_false", Integer.toString(run.calledFalse),
+                "elapsed_ms", Long.toString(elapsed));
         deliver(callback, summary);
     }
 

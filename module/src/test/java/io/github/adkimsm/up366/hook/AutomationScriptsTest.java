@@ -42,15 +42,27 @@ public final class AutomationScriptsTest {
     }
 
     @Test
-    public void forceStopProbesTheBridgeFacadesThenTheGlobal() {
-        String script = AutomationScripts.forceStopScript("audio123");
+    public void forceStopUsesTheCapturedPrefixWhenSafe() {
+        String script = AutomationScripts.forceStopScript("audio123", "window.onAudioStateChangeV1&&");
 
+        assertTrue(script.contains("window.onAudioStateChangeV1&&onAudioStateChangeV1(payload)"));
+        assertTrue(script.contains("via:'exact'"));
         assertTrue(script.contains("window.jsObj"));
         assertTrue(script.contains("window.jsChapterObj"));
         assertTrue(script.contains("window._android_js_obj_"));
         assertTrue(script.contains("window.onAudioStateChangeV1"));
         assertTrue(script.contains("\"state\":4"));
         assertTrue(script.contains("\"id\":\"audio123\""));
+    }
+
+    @Test
+    public void unsafePrefixIsRejectedAndOnlyTheProbesRemain() {
+        assertEquals("window.onAudioStateChangeV1&&onAudioStateChangeV1(payload)",
+                AutomationScripts.exactCallExpression("window.onAudioStateChangeV1&&"));
+        assertEquals(null, AutomationScripts.exactCallExpression("alert('x');window."));
+        assertEquals(null, AutomationScripts.exactCallExpression("<script>"));
+        assertFalse(AutomationScripts.forceStopScript("audio1", "x;alert(1)")
+                .contains("alert(1)"));
     }
 
     @Test
