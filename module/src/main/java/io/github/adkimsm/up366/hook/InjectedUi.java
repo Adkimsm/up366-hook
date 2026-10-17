@@ -24,6 +24,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -139,8 +142,12 @@ final class InjectedUi {
         final LinearLayout versionSection;
         final TextView diagnostics;
         final TextView logStatus;
+        final EditText devSelector;
+        final TextView devOutput;
         final EditText traceInput;
         final TextView traceResult;
+        String lastDevDump = "";
+        String lastDevSelector = PageDevToolsScripts.DEFAULT_SELECTOR;
 
         Root(Activity activity) {
             this.activity = activity;
@@ -162,6 +169,8 @@ final class InjectedUi {
             versionSection.setOrientation(LinearLayout.VERTICAL);
             diagnostics = new TextView(activity);
             logStatus = new TextView(activity);
+            devSelector = new EditText(activity);
+            devOutput = new TextView(activity);
             traceInput = new EditText(activity);
             traceResult = new TextView(activity);
 
@@ -368,6 +377,99 @@ final class InjectedUi {
             content.addView(traceQuery);
             traceResult.setText("（未查询）");
             content.addView(traceResult);
+
+            content.addView(section(context, "开发者工具（只读）"));
+            devSelector.setText(PageDevToolsScripts.DEFAULT_SELECTOR);
+            devSelector.setHint("CSS 选择器，如 .u3compo-qst / .u3-qst-opt / .u3-submit");
+            devSelector.setInputType(InputType.TYPE_CLASS_TEXT);
+            content.addView(devSelector);
+
+            Button outlineButton = new Button(context);
+            outlineButton.setText("DOM 概要");
+            outlineButton.setOnClickListener(view -> runDevTool("outline"));
+            content.addView(outlineButton);
+
+            Button stylesButton = new Button(context);
+            stylesButton.setText("计算样式");
+            stylesButton.setOnClickListener(view -> runDevTool("styles"));
+            content.addView(stylesButton);
+
+            Button gateButton = new Button(context);
+            gateButton.setText("门控概览");
+            gateButton.setOnClickListener(view -> runDevTool("gate"));
+            content.addView(gateButton);
+
+            Button devCopy = new Button(context);
+            devCopy.setText("复制结果");
+            devCopy.setOnClickListener(view -> copyToClipboard(devOutput.getText().toString()));
+            content.addView(devCopy);
+
+            Button devExport = new Button(context);
+            devExport.setText("写入日志文件（需 raw 开关）");
+            devExport.setOnClickListener(view -> exportDevDump());
+            content.addView(devExport);
+
+            devOutput.setTextSize(11);
+            devOutput.setTextIsSelectable(true);
+            devOutput.setText("（未查询：先打开一次题目页，再选选择器执行）");
+            content.addView(devOutput);
+        }
+
+        private void runDevTool(final String kind) {
+            String typed = devSelector.getText() == null ? "" : devSelector.getText().toString().trim();
+            final String selector = typed.isEmpty() ? PageDevToolsScripts.DEFAULT_SELECTOR : typed;
+            lastDevSelector = selector;
+            devOutput.setText("查询中…");
+            PageDevTools.Callback callback = json -> {
+                String text = "outline".equals(kind) ? renderOutline(selector, json) : renderJson(json);
+                lastDevDump = text;
+                devOutput.setText(text);
+                LogSink.diagnostic("devtools_query", Trace.newTraceId(), Trace.newRequestId(), "ok", "", 0,
+                        "tool", kind, "selector", LogSink.limit(LogSink.redact(selector), 120));
+            };
+            if ("styles".equals(kind)) PageDevTools.styles(selector, callback);
+            else if ("gate".equals(kind)) PageDevTools.gateOverview(callback);
+            else PageDevTools.outline(selector, callback);
+        }
+
+        private void exportDevDump() {
+            if (lastDevDump.isEmpty()) {
+                Toast.makeText(activity, "先执行一次查询", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            LogSink.rawEvent("devtools_dump", "selector", lastDevSelector, "dump", lastDevDump);
+            Toast.makeText(activity, LogFileSink.enabled()
+                    ? "已按 raw 开关写入日志文件" : "需先开启 log_file", Toast.LENGTH_LONG).show();
+        }
+
+        private String renderOutline(String selector, String json) {
+            try {
+                JSONObject object = new JSONObject(json);
+                if (!object.optBoolean("found", false)) {
+                    String error = object.optString("error", "");
+                    return "未命中：" + selector + (error.isEmpty() ? "" : "（" + error + "）");
+                }
+                JSONArray lines = object.optJSONArray("lines");
+                StringBuilder builder = new StringBuilder();
+                builder.append("selector=").append(selector)
+                        .append(" nodes=").append(object.optInt("nodes"))
+                        .append(object.optBoolean("truncated", false) ? " (truncated)" : "")
+                        .append('\n');
+                for (int i = 0; lines != null && i < lines.length(); i++) {
+                    builder.append(lines.optString(i)).append('\n');
+                }
+                return builder.toString();
+            } catch (Throwable error) {
+                return json;
+            }
+        }
+
+        private String renderJson(String json) {
+            try {
+                return new JSONObject(json).toString(2);
+            } catch (Throwable ignored) {
+                return json;
+            }
         }
 
         private void queryTrace() {

@@ -134,6 +134,11 @@ final class WebViewRecorder {
         protected void afterHookedMethod(MethodHookParam param) {
             WebView webView = (WebView) param.args[0];
             String url = String.valueOf(param.args[1]);
+            if ("page_finished".equals(event)) {
+                // Registered regardless of the logging toggles so the read-only developer tools
+                // always target the last loaded local practice page.
+                PageDevTools.register(webView, url);
+            }
             boolean logWebView = Config.enabled(webView.getContext(), Config.WEBVIEW);
             boolean probe = Config.enabled(webView.getContext(), Config.PROBE);
             boolean questionMetadata = Config.enabled(webView.getContext(), Config.QUESTION_METADATA);
