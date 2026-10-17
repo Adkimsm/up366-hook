@@ -60,6 +60,40 @@ final class QuestionDataParser {
         return roots;
     }
 
+    /** Lists every {@code questionData.js} under a page's {@code questions} directory, in walk order. */
+    static List<File> questionDataFiles(File pageFile) {
+        if (pageFile == null) return Collections.emptyList();
+        File pageDirectory = pageFile.getParentFile();
+        if (pageDirectory == null) return Collections.emptyList();
+        File questionsDirectory = new File(pageDirectory, "questions");
+        if (!questionsDirectory.isDirectory()) return Collections.emptyList();
+        List<File> files = new ArrayList<>();
+        try {
+            collect(questionsDirectory, questionsDirectory.getCanonicalPath(), files);
+        } catch (Exception ignored) {
+            return Collections.emptyList();
+        }
+        return files;
+    }
+
+    /**
+     * Reads a single {@code questionData.js} assignment and returns its {@code questionObj} without
+     * evaluating JavaScript. Returns {@code null} when the file is missing, oversized or unparsable.
+     */
+    static JSONObject readQuestionObject(File file) {
+        if (file == null || !file.isFile()) return null;
+        try {
+            String normalized = read(file).trim();
+            java.util.regex.Matcher assignmentMatcher = PAGE_CONFIG.matcher(normalized);
+            if (!assignmentMatcher.find()) return null;
+            String json = extractObject(normalized, assignmentMatcher.end());
+            if (json.length() == 0) return null;
+            return new JSONObject(json).optJSONObject("questionObj");
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     static File pageFileFromUrl(String url) {
         try {
             Uri uri = Uri.parse(url);

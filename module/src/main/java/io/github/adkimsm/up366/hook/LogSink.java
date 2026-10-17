@@ -23,11 +23,21 @@ final class LogSink {
             "(?i)(\\\"?(?:uId|userId|clientId|traceparent|tracestate)\\\"?\\s*[:=]\\s*\\\"?)([^\\\",&}\\s]+)"
     );
     private static volatile ClassLoader classLoader;
+    private static volatile String processRole = "unknown";
 
     private LogSink() {}
 
     static void init(ClassLoader loader) {
         classLoader = loader;
+    }
+
+    /** Distinguishes the module process ({@code module}) from the hooked target process ({@code target_hook}). */
+    static void setProcessRole(String role) {
+        processRole = role == null || role.length() == 0 ? "unknown" : role;
+    }
+
+    static String processRole() {
+        return processRole;
     }
 
     static void event(String event, String... fields) {
@@ -36,10 +46,35 @@ final class LogSink {
         field(json, "time", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(new Date()));
         field(json, "pid", Integer.toString(Process.myPid()));
         field(json, "sdk", Integer.toString(Build.VERSION.SDK_INT));
+        field(json, "processRole", processRole);
         field(json, "event", event);
         for (int i = 0; i + 1 < fields.length; i += 2) field(json, fields[i], fields[i + 1]);
         json.append('}');
         emit(json.toString());
+    }
+
+    /**
+     * Emits a structured diagnostic carrying the shared cross-process fields. Events without a
+     * traceId are marked {@code orphan}, never paired by timestamp.
+     */
+    static void diagnostic(String event, String traceId, String requestId,
+                           String status, String errorCode, long durationMs, String... fields) {
+        java.util.List<String> all = new java.util.ArrayList<>(16);
+        all.add("traceId");
+        all.add(traceId == null || traceId.length() == 0 ? "orphan" : traceId);
+        all.add("requestId");
+        all.add(requestId == null || requestId.length() == 0 ? "orphan" : requestId);
+        all.add("status");
+        all.add(status == null || status.length() == 0
+                ? (traceId == null || traceId.length() == 0 ? "orphan" : "") : status);
+        all.add("errorCode");
+        all.add(errorCode == null ? "" : errorCode);
+        all.add("durationMs");
+        all.add(Long.toString(durationMs < 0 ? 0 : durationMs));
+        if (fields != null) {
+            for (String field : fields) all.add(field);
+        }
+        event(event, all.toArray(new String[0]));
     }
 
     static void error(String event, Throwable error) {
@@ -132,7 +167,9 @@ final class LogSink {
         return out.toString();
     }
 
-    private static String shortHash(String value) {
+    /** Stable short hash used for identifier and version correlation fields. */
+    static String hash(String value) {
+        if (value == null) return "";
         try {
             java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
             byte[] bytes = digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -142,5 +179,9 @@ final class LogSink {
         } catch (Throwable ignored) {
             return "<hashed>";
         }
+    }
+
+    private static String shortHash(String value) {
+        return hash(value);
     }
 }

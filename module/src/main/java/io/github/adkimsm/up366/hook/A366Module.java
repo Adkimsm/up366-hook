@@ -23,6 +23,7 @@ public final class A366Module implements IXposedHookLoadPackage {
         if (!TARGET_PACKAGE.equals(lpparam.packageName)) return;
 
         LogSink.init(lpparam.classLoader);
+        LogSink.setProcessRole("target_hook");
         LogSink.event("module_loaded", "package", lpparam.packageName, "process", lpparam.processName);
         hookApplicationAttach(lpparam.classLoader);
         hookApplicationCreate(lpparam.classLoader);
@@ -80,6 +81,7 @@ public final class A366Module implements IXposedHookLoadPackage {
             RuntimeClassObserver.install(classLoader);
             ActivityRecorder.install();
             OkHttpRecorder.setContext(context);
+            QuestionPackageRecorder.install(context);
             WebViewRecorder.install(context, classLoader);
             OkHttpRecorder.install(classLoader);
         } catch (Throwable error) {

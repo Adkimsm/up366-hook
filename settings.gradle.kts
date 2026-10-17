@@ -16,4 +16,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "up366"
-include(":app", ":module")
+include(":module")

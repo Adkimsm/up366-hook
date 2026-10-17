@@ -9,15 +9,24 @@ import java.util.Map;
 
 import de.robv.android.xposed.XSharedPreferences;
 
+/**
+ * Target-process configuration reader. Order of preference: the module {@link HookStatusProvider},
+ * then {@code XSharedPreferences}, then built-in defaults. The Provider is not trusted implicitly,
+ * so the fallback chain stays in place.
+ */
 final class Config {
-    static final String ACTIVITY = "activity";
-    static final String NETWORK = "network";
-    static final String WEBVIEW = "webview";
-    static final String PROBE = "probe";
-    static final String BRIDGE = "bridge";
-    static final String QUESTION_METADATA = "question_metadata";
+    static final String ACTIVITY = ModuleConfig.ACTIVITY;
+    static final String NETWORK = ModuleConfig.NETWORK;
+    static final String WEBVIEW = ModuleConfig.WEBVIEW;
+    static final String PROBE = ModuleConfig.PROBE;
+    static final String BRIDGE = ModuleConfig.BRIDGE;
+    static final String QUESTION_METADATA = ModuleConfig.QUESTION_METADATA;
+    static final String ANSWER_INDEX = ModuleConfig.ANSWER_INDEX;
 
-    private static final Uri URI = Uri.parse("content://io.github.adkimsm.up366.provider");
+    static final String AUTHORITY = HookStatusProvider.AUTHORITY;
+    static final String METHOD_GET_FLAGS = HookStatusProvider.METHOD_GET_FLAGS;
+
+    private static final Uri URI = Uri.parse("content://" + AUTHORITY);
     private static final Object LOCK = new Object();
     private static final long CACHE_TTL_MS = 1500L;
     private static final Map<String, Boolean> VALUES = new HashMap<>();
@@ -27,6 +36,14 @@ final class Config {
 
     private Config() {}
 
+    /** Drops the cached flag values so the next read re-queries the Provider. */
+    static void invalidate() {
+        synchronized (LOCK) {
+            loaded = false;
+            loadedAt = 0L;
+        }
+    }
+
     static boolean enabled(Context context, String key) {
         synchronized (LOCK) {
             Boolean cached = VALUES.get(key);
@@ -35,14 +52,14 @@ final class Config {
         }
 
         try {
-            Bundle result = context.getContentResolver().call(URI, "get_flags", null, null);
+            Bundle result = context.getContentResolver().call(URI, METHOD_GET_FLAGS, null, null);
             synchronized (LOCK) {
                 loaded = true;
                 loadedAt = android.os.SystemClock.elapsedRealtime();
-                for (String candidate : new String[]{ACTIVITY, NETWORK, WEBVIEW, PROBE, BRIDGE, QUESTION_METADATA}) {
+                for (String candidate : ModuleConfig.KEYS) {
                     VALUES.put(candidate, result == null
-                            ? defaultValue(candidate)
-                            : result.getBoolean(candidate, defaultValue(candidate)));
+                            ? ModuleConfig.defaultValue(candidate)
+                            : result.getBoolean(candidate, ModuleConfig.defaultValue(candidate)));
                 }
                 return VALUES.get(key);
             }
@@ -59,37 +76,34 @@ final class Config {
             synchronized (LOCK) {
                 loaded = true;
                 loadedAt = android.os.SystemClock.elapsedRealtime();
-                for (String candidate : new String[]{ACTIVITY, NETWORK, WEBVIEW, PROBE, BRIDGE, QUESTION_METADATA}) {
-                    VALUES.put(candidate, defaultValue(candidate));
+                for (String candidate : ModuleConfig.KEYS) {
+                    VALUES.put(candidate, ModuleConfig.defaultValue(candidate));
                 }
                 if (!warned) {
                     warned = true;
                     LogSink.error("read_config_once", error);
                 }
             }
-            return defaultValue(key);
+            return ModuleConfig.defaultValue(key);
         }
     }
 
     private static Map<String, Boolean> readSharedPreferences() {
         try {
             XSharedPreferences preferences = new XSharedPreferences(
-                    "io.github.adkimsm.up366", "p0_flags");
+                    ModuleConfig.MODULE_PACKAGE, ModuleConfig.PREFS);
             preferences.reload();
             boolean hasValue = false;
             Map<String, Boolean> values = new HashMap<>();
-            for (String candidate : new String[]{ACTIVITY, NETWORK, WEBVIEW, PROBE, BRIDGE, QUESTION_METADATA}) {
+            for (String candidate : ModuleConfig.KEYS) {
                 hasValue |= preferences.contains(candidate);
-                values.put(candidate, preferences.getBoolean(candidate, defaultValue(candidate)));
+                values.put(candidate, preferences.getBoolean(candidate,
+                        ModuleConfig.defaultValue(candidate)));
             }
             return hasValue ? values : null;
         } catch (Throwable error) {
             if (!warned) LogSink.error("read_xshared_preferences", error);
             return null;
         }
-    }
-
-    private static boolean defaultValue(String key) {
-        return ACTIVITY.equals(key);
     }
 }

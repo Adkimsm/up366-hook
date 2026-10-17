@@ -1,8 +1,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:label="UP366 LSPosed P1 Read-Only">
+    <application
+        android:label="UP366 答案与诊断"
+        android:theme="@style/AppTheme">
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="UP366 P1 read-only runtime observation" />
+        <meta-data android:name="xposeddescription" android:value="UP366 read-only runtime observation and question/answer data layer" />
         <meta-data android:name="xposedminversion" android:value="54" />
         <meta-data android:name="xposedsharedprefs" android:value="true" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name=".HookStatusProvider"
+            android:authorities="io.github.adkimsm.up366.hook.provider"
+            android:exported="true"
+            android:grantUriPermissions="false" />
     </application>
 </manifest>
