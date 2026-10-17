@@ -1,6 +1,8 @@
 package io.github.adkimsm.up366.hook;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -20,7 +22,9 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -313,7 +317,7 @@ final class InjectedUi {
             coverage.setText("（无数据）");
             content.addView(coverage);
 
-            content.addView(section(context, "答案（本地题包）"));
+            content.addView(section(context, "当前套题答案"));
             answerSection.setOrientation(LinearLayout.VERTICAL);
             content.addView(answerSection);
 
@@ -387,28 +391,29 @@ final class InjectedUi {
             final Context context = activity;
             WORKER.execute(() -> {
                 final int count = AnswerStore.get(context).count();
-                final List<AnswerRecord> records = AnswerStore.get(context).queryAll(200);
                 final List<String> versions = AnswerStore.get(context).packageVersions();
                 final List<String> events = AnswerStore.get(context).recentParseEvents(20);
-                int present = 0;
-                int missing = 0;
-                StringBuilder answers = new StringBuilder();
-                for (AnswerRecord record : records) {
-                    if (record.hasAnswer()) present++;
-                    else missing++;
-                    answers.append(AnswerFormatter.describe(record, false)).append('\n');
+                final CurrentQuestionSet.Snapshot snapshot = CurrentQuestionSet.snapshot();
+                final List<String> setLines = new ArrayList<>();
+                if (snapshot == null || snapshot.isEmpty()) {
+                    setLines.add("（未检测到当前套题：请在题目页开启“题包结构解析”并等待解析完成）");
+                } else {
+                    String name = joinNonEmpty(" · ",
+                            QuestionSetNameRegistry.bookName(snapshot.bookId),
+                            QuestionSetNameRegistry.lastNavigationTitle());
+                    setLines.add("套题：" + (name.length() == 0 ? "（未知套题名）" : name));
+                    setLines.add("第 " + (snapshot.pageId.length() == 0 ? "?" : snapshot.pageId)
+                            + " 页 · " + snapshot.itemCount() + " 题");
+                    setLines.addAll(CurrentQuestionSet.renderAnswerLines(snapshot));
                 }
-                final String coverageText = "本地答案索引 " + count + " 条（本页展示 "
-                        + records.size() + "，有答案 " + present + "，缺失 " + missing + "）";
-                final String answersText = answers.length() == 0
-                        ? "（本地答案索引为空：在天学网打开题目页并启用“本地答案索引”）"
-                        : answers.toString();
+                final String coverageText = "本地答案索引 " + count + " 条（当前套题 "
+                        + (snapshot == null ? 0 : snapshot.itemCount()) + " 题）";
                 final String diagnosticsText = events.isEmpty() ? "（无解析任务记录）" : join(events);
                 MAIN.post(() -> {
                     status.setText("Hook 就绪，processRole=" + LogSink.processRole());
                     coverage.setText(coverageText);
                     answerSection.removeAllViews();
-                    addLines(answerSection, answersText);
+                    for (String line : setLines) addCopyableLine(answerSection, line);
                     versionSection.removeAllViews();
                     addVersions(versionSection, versions);
                     diagnostics.setText(diagnosticsText);
@@ -439,13 +444,28 @@ final class InjectedUi {
             }
         }
 
-        private void addLines(LinearLayout section, String text) {
-            for (String line : text.split("\n")) {
-                if (line.length() == 0) continue;
-                TextView view = new TextView(activity);
-                view.setText(line);
-                view.setPadding(0, dp(activity, 4), 0, dp(activity, 4));
-                section.addView(view);
+        /** Adds one answer line that can be long-pressed (or selected) and copied to the clipboard. */
+        private void addCopyableLine(LinearLayout section, String text) {
+            TextView view = new TextView(activity);
+            view.setText(text);
+            view.setTextIsSelectable(true);
+            view.setPadding(0, dp(activity, 4), 0, dp(activity, 4));
+            view.setOnLongClickListener(v -> {
+                copyToClipboard(text);
+                return true;
+            });
+            section.addView(view);
+        }
+
+        private void copyToClipboard(String text) {
+            try {
+                ClipboardManager clipboard =
+                        (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard == null) return;
+                clipboard.setPrimaryClip(ClipData.newPlainText("UP366 答案", text));
+                Toast.makeText(activity, "已复制", Toast.LENGTH_SHORT).show();
+            } catch (Throwable ignored) {
+                // Copy is best-effort; a failure must never affect the target app.
             }
         }
 
@@ -475,6 +495,19 @@ final class InjectedUi {
         for (String value : values) {
             if (builder.length() > 0) builder.append('\n');
             builder.append(value);
+        }
+        return builder.toString();
+    }
+
+    /** Joins non-empty parts with a separator, skipping blanks. */
+    private static String joinNonEmpty(String separator, String... values) {
+        StringBuilder builder = new StringBuilder();
+        if (values != null) {
+            for (String value : values) {
+                if (value == null || value.length() == 0) continue;
+                if (builder.length() > 0) builder.append(separator);
+                builder.append(value);
+            }
         }
         return builder.toString();
     }

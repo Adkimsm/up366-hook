@@ -9,6 +9,8 @@ final class QuestionModel {
     final int questionType;
     final int qtypeId;
     final String elementId;
+    final String questionText;
+    final String answerText;
     final int optionCount;
     final List<OptionModel> options;
     final List<MediaModel> media;
@@ -17,13 +19,15 @@ final class QuestionModel {
     final String parentQuestionId;
 
     QuestionModel(String questionId, int questionType, int qtypeId, String elementId,
-                  int optionCount,
+                  String questionText, String answerText, int optionCount,
                   List<OptionModel> options, List<MediaModel> media,
                   List<QuestionModel> children, String sourceFile, String parentQuestionId) {
         this.questionId = questionId;
         this.questionType = questionType;
         this.qtypeId = qtypeId;
         this.elementId = elementId;
+        this.questionText = questionText == null ? "" : questionText;
+        this.answerText = answerText == null ? "" : answerText;
         this.optionCount = optionCount;
         this.options = Collections.unmodifiableList(new ArrayList<>(options));
         this.media = Collections.unmodifiableList(new ArrayList<>(media));
@@ -34,8 +38,11 @@ final class QuestionModel {
 
     static final class OptionModel {
         final String id;
-        OptionModel(String id) {
+        final String content;
+
+        OptionModel(String id, String content) {
             this.id = id;
+            this.content = content == null ? "" : content;
         }
     }
 

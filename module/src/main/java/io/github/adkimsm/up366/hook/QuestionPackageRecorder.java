@@ -65,17 +65,26 @@ final class QuestionPackageRecorder {
     private static void parse(WebView webView, File pageFile, String traceId) {
         long started = SystemClock.elapsedRealtime();
         Context context = context(webView);
+        PackageIdentity identity = PackageIdentity.of(pageFile);
         try {
             List<QuestionModel> questions = QuestionDataParser.parsePage(pageFile);
             List<QuestionModel> flattened = CompositeQuestionExpander.flatten(questions);
             Map<String, ListeningResourceMapper.Resource> resources =
                     ListeningResourceMapper.index(questions);
             ReadOnlyTaskMonitor.registerQuestions(webView, questions);
+            CurrentQuestionSet.update(identity, questions);
+            int setSize = CurrentQuestionSet.snapshot() == null
+                    ? 0 : CurrentQuestionSet.snapshot().itemCount();
+            LogSink.diagnostic("current_question_set_updated", traceId, "", "ok", "",
+                    SystemClock.elapsedRealtime() - started,
+                    "bookNameHash", Trace.hash(QuestionSetNameRegistry.bookName(identity.bookId)),
+                    "navigationTitleHash", Trace.hash(QuestionSetNameRegistry.lastNavigationTitle()),
+                    "items", Integer.toString(setSize));
             int roots = 0;
             for (QuestionModel question : questions) {
                 if (question.parentQuestionId.length() == 0) roots++;
             }
-            String pageId = pageFile.getParentFile() == null ? "" : pageFile.getParentFile().getName();
+            String pageId = identity.pageId;
             int answersPresent = -1;
             String packageVersion = "";
             if (context != null && Config.enabled(context, Config.ANSWER_INDEX)) {

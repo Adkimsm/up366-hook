@@ -27,12 +27,14 @@ final class AnswerIndexer {
         if (pageFile == null || !pageFile.isFile()) return new Result("", "", "", "", records, report);
 
         File pageDirectory = pageFile.getParentFile();
-        File chapterDirectory = pageDirectory == null ? null : pageDirectory.getParentFile();
-        File bookDirectory = chapterDirectory == null ? null : chapterDirectory.getParentFile();
-        String pageId = name(pageDirectory);
-        String chapterId = name(chapterDirectory);
-        String bookId = name(bookDirectory);
-        String packageVersion = bookDirectory == null ? "" : Trace.hash(canonical(bookDirectory));
+        File bookDirectory = pageDirectory == null ? null
+                : pageDirectory.getParentFile() == null ? null
+                : pageDirectory.getParentFile().getParentFile();
+        PackageIdentity identity = PackageIdentity.of(pageFile);
+        String pageId = identity.pageId;
+        String chapterId = identity.chapterId;
+        String bookId = identity.bookId;
+        String packageVersion = identity.packageVersion;
 
         Map<String, Integer> keyCounts = new HashMap<>();
         long observedAt = System.currentTimeMillis();
@@ -172,18 +174,6 @@ final class AnswerIndexer {
             // Fall through to the directory name.
         }
         return file.getName();
-    }
-
-    private static String canonical(File file) {
-        try {
-            return file.getCanonicalPath();
-        } catch (Exception ignored) {
-            return file.getAbsolutePath();
-        }
-    }
-
-    private static String name(File directory) {
-        return directory == null ? "" : directory.getName();
     }
 
     static final class Result {

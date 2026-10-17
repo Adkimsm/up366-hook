@@ -138,7 +138,9 @@ final class BridgeRecorder {
         @Override
         protected void beforeHookedMethod(MethodHookParam param) {
             WebView webView = WEBVIEWS.get(param.thisObject);
-            if (webView == null || !Config.enabled(webView.getContext(), Config.BRIDGE)) return;
+            if (webView == null) return;
+            QuestionSetNameRegistry.capture(method, param.args);
+            if (!Config.enabled(webView.getContext(), Config.BRIDGE)) return;
             String callId = "b" + IDS.incrementAndGet();
             long started = System.currentTimeMillis();
             Call call = new Call(callId, started, webView);
@@ -164,6 +166,8 @@ final class BridgeRecorder {
 
         @Override
         protected void afterHookedMethod(MethodHookParam param) {
+            QuestionSetNameRegistry.capture(method,
+                    new Object[]{param.hasThrowable() ? null : param.getResult()});
             Call call = (Call) param.getObjectExtra(EXTRA);
             if (call == null) return;
             long elapsed = Math.max(0L, System.currentTimeMillis() - call.started);

@@ -169,7 +169,8 @@ final class WebViewRecorder {
             if (Config.enabled(webView.getContext(), Config.WEBVIEW)) {
                 LogSink.event("javascript_interface", "name", name, "class", bridge == null ? "null" : bridge.getClass().getName());
             }
-            if (bridge != null && Config.enabled(webView.getContext(), Config.BRIDGE)) {
+            if (bridge != null && (Config.enabled(webView.getContext(), Config.BRIDGE)
+                    || Config.enabled(webView.getContext(), Config.QUESTION_METADATA))) {
                 BridgeRecorder.register(bridge, webView);
             }
         }

@@ -137,8 +137,8 @@ final class QuestionDataParser {
 
     private static QuestionModel withParent(QuestionModel source, String parentId) {
         return new QuestionModel(source.questionId, source.questionType, source.qtypeId,
-                source.elementId, source.optionCount, source.options, source.media,
-                source.children, source.sourceFile, parentId);
+                source.elementId, source.questionText, source.answerText, source.optionCount,
+                source.options, source.media, source.children, source.sourceFile, parentId);
     }
 
     private static File sourceForQuestion(File current, String questionId) {
@@ -168,7 +168,8 @@ final class QuestionDataParser {
             for (int i = 0; i < optionArray.length(); i++) {
                 JSONObject option = optionArray.optJSONObject(i);
                 if (option == null) continue;
-                options.add(new QuestionModel.OptionModel(option.optString("id", "")));
+                options.add(new QuestionModel.OptionModel(option.optString("id", ""),
+                        option.optString("content", "")));
             }
         }
         List<QuestionModel.MediaModel> media = new ArrayList<>();
@@ -179,7 +180,8 @@ final class QuestionDataParser {
         }
         return new QuestionModel(value.optString("question_id", ""),
                 value.optInt("question_type", -1), value.optInt("qtype_id", -1),
-                value.optString("element_id", ""), options.size(),
+                value.optString("element_id", ""), value.optString("question_text", ""),
+                value.optString("answer_text", ""), options.size(),
                 options, media, children, source.getAbsolutePath(), parentId);
     }
 

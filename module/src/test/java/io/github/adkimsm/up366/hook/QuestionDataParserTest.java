@@ -130,7 +130,7 @@ public final class QuestionDataParserTest {
     }
 
     private static QuestionModel question(String id) {
-        return new QuestionModel(id, 1, 0, "", 0,
+        return new QuestionModel(id, 1, 0, "", "", "", 0,
                 java.util.Collections.emptyList(), java.util.Collections.emptyList(),
                 java.util.Collections.emptyList(), "", "");
     }
