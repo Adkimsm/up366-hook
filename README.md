@@ -87,3 +87,29 @@
 2. 每条结论尽量标注**证据来源**（哪个工具 / 哪个文件 / 哪个类），未验证的一律写「待验证」。
 3. 不把「推测」写成「事实」。`docs/05-risks-open-questions.md` 是唯一记录未解问题的地方。
 4. 代码开工前必须先确认 `docs/05` 里的 **Q1（加固是否拦 LSPosed）** 有结论。
+
+---
+
+## 6. 许可证
+
+本项目以 **GNU General Public License v3.0（GPL-3.0）** 发布，完整条款见仓库根目录的 [`LICENSE`](LICENSE)。
+
+```
+up366 — LSPosed module for the Tianxuewang Android client
+Copyright (C) 2026  up366 contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+```
+
+沿用上游 Auto366 的「仅供学习研究，严禁商用」约定（见 `docs/05-risks-open-questions.md` 法律与合规提醒）。
