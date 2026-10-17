@@ -69,12 +69,18 @@ final class Automation {
                 return;
             }
             LogSink.event("auto_advance_start", "prefix",
-                    LogSink.limit(AudioPlayback.callbackPrefix(), 80));
-            step(webView, new Run(), callback);
+                    LogSink.limit(AudioPlayback.callbackPrefix(), 80),
+                    "rate", AutomationScripts.ACCELERATED_RATE);
+            // Compress the page's answer/reading waits for the duration of the run.
+            evaluate(webView, AutomationScripts.timerClampScript(), clamp -> {
+                Run run = new Run(webView);
+                step(webView, run, callback);
+            });
         });
     }
 
     private static final class Run {
+        final WebView webView;
         final long startedAt = android.os.SystemClock.elapsedRealtime();
         String targetId = "";
         int targetAttempts;
@@ -86,6 +92,10 @@ final class Automation {
         String lastVia = "";
         int steps;
         int clickedAtStep = -1;
+
+        Run(WebView webView) {
+            this.webView = webView;
+        }
     }
 
     private static void step(final WebView webView, final Run run, final Callback callback) {
@@ -154,6 +164,7 @@ final class Automation {
 
     private static void finish(Callback callback, Run run, String reason) {
         BUSY.set(false);
+        evaluate(run.webView, AutomationScripts.timerRestoreScript(), restored -> { });
         long elapsed = android.os.SystemClock.elapsedRealtime() - run.startedAt;
         long average = run.audioIds == 0 ? 0 : elapsed / run.audioIds;
         String summary = "{\"reason\":\"" + reason + "\",\"audioIds\":" + run.audioIds
@@ -161,6 +172,7 @@ final class Automation {
                 + ",\"calledTrue\":" + run.calledTrue
                 + ",\"calledFalse\":" + run.calledFalse
                 + ",\"lastVia\":\"" + run.lastVia + "\""
+                + ",\"rate\":\"" + AutomationScripts.ACCELERATED_RATE + "\""
                 + ",\"steps\":" + run.steps
                 + ",\"elapsedMs\":" + elapsed
                 + ",\"avgPerSectionMs\":" + average + "}";

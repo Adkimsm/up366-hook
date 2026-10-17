@@ -179,8 +179,13 @@ final class BridgeRecorder {
             if (webView == null) return;
             QuestionSetNameRegistry.capture(method, param.args);
             if ("playAudioWithParams".equals(method)) {
-                AudioPlayback.remember(BridgeScriptAnalyzer.audioIdFromPlayRequest(
-                        param.args.length > 0 ? String.valueOf(param.args[0]) : ""));
+                String payload = param.args.length > 0 ? String.valueOf(param.args[0]) : "";
+                AudioPlayback.remember(BridgeScriptAnalyzer.audioIdFromPlayRequest(payload));
+                if (Config.enabled(webView.getContext(), Config.AUTO_ADVANCE)) {
+                    // Let the clip play through for real, just much faster, so the page's own
+                    // play-count / first-listen logic still runs.
+                    param.args[0] = AutomationScripts.withRate(payload, AutomationScripts.ACCELERATED_RATE);
+                }
             }
             if (!Config.enabled(webView.getContext(), Config.BRIDGE)) return;
             String callId = "b" + IDS.incrementAndGet();

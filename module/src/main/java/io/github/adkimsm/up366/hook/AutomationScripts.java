@@ -9,8 +9,51 @@ import java.util.Map;
  * Android types so the builders are unit-testable.
  */
 final class AutomationScripts {
+    /** Playback rate used while the listening fast-forward is running. */
+    static final String ACCELERATED_RATE = "8.0";
+    private static final java.util.regex.Pattern RATE_FIELD =
+            java.util.regex.Pattern.compile("\"rate\"\\s*:\\s*[0-9.]+");
 
     private AutomationScripts() {}
+
+    /**
+     * Rewrites the page's own {@code playAudioWithParams} request so the native player plays the
+     * clip at {@code rate}. Only the rate field changes; everything else is preserved verbatim.
+     */
+    static String withRate(String payload, String rate) {
+        if (payload == null || payload.isEmpty() || rate == null || rate.isEmpty()) return payload;
+        if (RATE_FIELD.matcher(payload).find()) {
+            return RATE_FIELD.matcher(payload).replaceFirst("\"rate\":" + rate);
+        }
+        int end = payload.lastIndexOf('}');
+        if (end < 0) return payload;
+        return payload.substring(0, end) + ",\"rate\":" + rate + payload.substring(end);
+    }
+
+    /**
+     * Compresses the page's {@code setTimeout} delays for the duration of the run (keeps a small
+     * floor so ordering is preserved). The original function is saved for {@link #timerRestoreScript}.
+     */
+    static String timerClampScript() {
+        return "(function(){try{"
+                + "if(window.__up366_timer){return 'already';}"
+                + "var st=window.setTimeout;"
+                + "window.__up366_timer={st:st};"
+                + "window.setTimeout=function(fn,ms){"
+                + "var a=Array.prototype.slice.call(arguments,2);"
+                + "var d=Math.max(20,Math.min(typeof ms==='number'?ms:0,80));"
+                + "return st.apply(window,[fn,d].concat(a));};"
+                + "return 'ok';"
+                + "}catch(e){return 'err';}})()";
+    }
+
+    /** Restores the original {@code setTimeout}. */
+    static String timerRestoreScript() {
+        return "(function(){try{"
+                + "var t=window.__up366_timer;if(!t)return 'none';"
+                + "window.setTimeout=t.st;delete window.__up366_timer;return 'restored';"
+                + "}catch(e){return 'err';}})()";
+    }
 
     /**
      * Clicks the option matching each known answer inside the answering slides only. The preview

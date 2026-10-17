@@ -42,6 +42,29 @@ public final class AutomationScriptsTest {
     }
 
     @Test
+    public void withRateRewritesOnlyTheRateField() {
+        assertEquals("{\"id\":\"a\",\"rate\":8.0}",
+                AutomationScripts.withRate("{\"id\":\"a\",\"rate\":1}", "8.0"));
+        assertEquals("{\"id\":\"a\",\"rate\":8.0}",
+                AutomationScripts.withRate("{\"id\":\"a\"}", "8.0"));
+        assertEquals("{\"id\":\"a\",\"rate\":8.0,\"x\":1}",
+                AutomationScripts.withRate("{\"id\":\"a\",\"rate\":2,\"x\":1}", "8.0"));
+        assertEquals("not-json", AutomationScripts.withRate("not-json", "8.0"));
+    }
+
+    @Test
+    public void timerScriptsClampAndRestoreSetTimeout() {
+        String clamp = AutomationScripts.timerClampScript();
+        assertTrue(clamp.contains("window.setTimeout"));
+        assertTrue(clamp.contains("__up366_timer"));
+        assertTrue(clamp.contains("Math.min"));
+
+        String restore = AutomationScripts.timerRestoreScript();
+        assertTrue(restore.contains("window.setTimeout=t.st"));
+        assertTrue(restore.contains("delete window.__up366_timer"));
+    }
+
+    @Test
     public void forceStopUsesTheCapturedPrefixWhenSafe() {
         String script = AutomationScripts.forceStopScript("audio123", "window.onAudioStateChangeV1&&");
 
