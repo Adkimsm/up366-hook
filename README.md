@@ -1,102 +1,107 @@
-# up366 — 天学网 Android 自动化（LSPosed）
+# up366-hook
 
-把桌面版 [Auto366](https://github.com/CyrilGuoCODE/Auto366)（Electron + MITM 代理）的自动化能力，用
-**LSPosed 运行时 hook** 的方式搬到 Android 版天学网（`com.up366.mobile`）上。
+面向天学网 Android 客户端（`com.up366.mobile`）的 **LSPosed 运行时模块**：在目标 App 进程内做只读观察
+（桥调用、WebView 页面、网络、题包解析、答案索引），并通过注入到目标进程的只读面板查看结果。
+在只读能力之上，模块还提供默认关闭的可选自动化（一键填答、听力快进并交卷、速度档位）。
 
-> P0 运行时侦察已经完成；P1a/P1b 首版只读实现和本地测试已落地，真机回归仍待完成。
-> 独立只读答案层（`docs/09`）已改为“目标进程内解析 + 注入式原生面板”，构建与单测通过，真机验收待执行。
-> 文档先行，目的是让后续任意一次对话（不同 session / 不同人）都能凭本仓库恢复完整上下文。
-
----
-
-## 1. 当前状态
-
-| 项 | 状态 |
-|---|---|
-| 桌面版 Auto366 机制分析 | ✅ 已完成（见 `docs/01-desktop-auto366.md`） |
-| 天学网 APK 静态侦察 | ✅ 已完成（见 `docs/02-apk-recon.md`） |
-| 桥 API 清单提取 | ✅ 已完成（见 `docs/03-bridge-api.md` + `data/bridge-api.json`） |
-| 移动端 HAR / 练习包侦察 | ✅ 已完成第一轮（见 `docs/02-apk-recon.md`、`docs/07-flipbook-recon.md`） |
-| Android 方案设计 | ✅ 已完成（见 `docs/04-android-plan.md`） |
-| P0 侦察模块代码 | ✅ 已完成首版骨架（待真机/LSPosed 验证） |
-| P1a 只读运行时观察 | 🟢 异步回调关联已真机验证（10/10 带 `call_id`，`orphan=0`、`timeout=0`）；桥源码注入已区分；OkHttp 已抓到业务请求/响应（34/34，含 `study-api…/score/gzip/submit`、`growth-api…/analysis`）；`submitTaskV1` 已观察到。 |
-| P1b 题包结构解析与状态映射 | 🟡 本地解析器和单元测试已实现；题包版本/题型覆盖及真机匹配待验证 |
-| 独立只读答案层（`docs/09`） | 🟡 目标进程内解析/答案索引/注入式只读面板已实现，面板改为仅显示当前套题 `N. 题干：选项内容` 并支持长按复制，套题名取自只读 Bridge 元数据；构建与单测通过，真机验收未执行 |
-| P2-P5 | 🟡 P3 首批自动化已实现（`auto_fill` 一键填答、`auto_advance` 快进听音并交卷），默认关闭、待真机验证；P4 未开始；答案写回、改分不在范围内 |
+> 仅供学习与研究使用，严禁商用。本项目不修改、不重分发天学网 APK。
 
 ---
 
-## 2. 文档索引
+## 1. 功能
 
-| 文件 | 内容 |
-|---|---|
-| `docs/01-desktop-auto366.md` | 桌面版 Auto366 工作原理：代理、规则类型、ZIP 动态注入、时间签名、加密格式、各规则集配置 |
-| `docs/02-apk-recon.md` | 天学网 APK 静态侦察：加固、清单、WebView、网络栈、原生库、桥机制 |
-| `docs/03-bridge-api.md` | JS 桥 API 全量清单 + 自动化价值标注 |
-| `docs/04-android-plan.md` | Android 方案与分期计划，含 P0 侦察结果和 P1 实现边界 |
-| `docs/05-risks-open-questions.md` | 风险清单与待验证问题（**每次有新发现都往这里记**） |
-| `docs/06-mt-toolbox.md` | 如何用 MT MCP 工具重读 APK（跨对话复现步骤） |
-| `docs/07-flipbook-recon.md` | 实际听力题包结构、题目数据模型、运行日志对应关系与 P1 开工边界 |
-| `docs/08-module-development-plan.md` | 模块主线开发计划（LSPosed 运行时观察与 WebView 探针） |
-| `docs/09-readonly-question-answer-plan.md` | 独立只看答案层：题包解析、本地答案索引、目标进程内注入式只读面板 |
-| `data/bridge-api.json` | `assets/api.json` 原始副本（桥 API 清单，未改动） |
+| 能力 | 说明 | 默认 |
+|---|---|---|
+| Activity / 进程观察 | Hook `Instrumentation#callActivityOnCreate`、`Application#onCreate` | 开 |
+| 注入式只读面板 | 悬浮按钮 + 面板（DecorView 兄弟 View），状态 / 开关 / 答案 / 维护 / 诊断 / 日志 / 开发者工具 | 开 |
+| WebView 与 JS 桥观察 | 页面加载、`addJavascriptInterface`、桥调用与同步/异步结果关联、原生→页面音频回调 | 关 |
+| 只读 WebView 探针 | `file://` 页面 DOM 结构、真实组件选择器、渲染完成重试、iframe | 关 |
+| 网络观察 | OkHttp 动态代理拦截，记录请求/响应元数据与截断正文 | 关 |
+| 题包解析（只读） | `questionData.js`、组合大题递归展开、音频资源映射 | 关 |
+| 本地答案索引（只读） | 解析 `answer_text` 建 SQLite 索引（目标 App 私有目录），面板显示当前套题答案 | 关 |
+| 开发者工具（只读） | 对当前页面执行 DOM 概要 / 计算样式 / 门控概览；原生音频回调列表 | 面板内按钮 |
+| 一键填答 | 用本地答案索引在答题层点击选项（程序化点击绕过页面 CSS 禁用） | 关 |
+| 听力快进并交卷 | 加速播放 + 压缩页面等待 + 重试「听完」回调，全部解锁后自动提交 | 关 |
+| 速度档位 | 关闭 / 标准 / 快速 / 极限，统一控制播放倍速、页面时钟倍速、等待压缩与重试间隔 | 快速 |
 
-构建产物：`module/build/outputs/apk/debug/module-debug.apk`（纯 LSPosed 模块，无独立 App UI、无 Provider、无 `exported` 组件）。
-
-本机验证构建命令：`./gradlew :module:testDebugUnitTest :module:assembleDebug`。
-
-日志默认输出 Logcat（标签 `UP366-P0`）。此外可开启“结构化日志写入私有目录”（`log_file`，默认关）：模块把同样已脱敏的 NDJSON 事件写入目标 App 私有目录 `files/up366/logs/`，避免 Logcat 单行上限与 `P0CHUNK` 分片重组。日志文件位置会明确给出——启动时和每次在面板打开该开关时都会输出 `log_file_ready` 事件（含绝对路径），面板“日志文件”区显示“已开启/未开启 + 路径”并提供“复制日志文件路径”按钮，打开开关时还会弹出路径提示；**若不可写则显示具体原因码与尝试目录，而非笼统的“不可用”**（`init_not_called` / `files_dir_unavailable` / `mkdirs_failed` / `fallback_external` / `exception:<类名>`），内部目录不可写时自动回退到外部私有目录并标注。`log_raw_bridge`（默认关，仅调试）会额外把无法解析的桥异步回调原始脚本写入同一文件（**含业务数据、只进文件不进 Logcat，用完必须删除**）。
-
-模块 APK 的唯一职责是被 LSPosed 加载进 `com.up366.mobile` 进程；LSPosed 作用域只勾选 `com.up366.mobile`。默认开启“Activity 生命周期”和“注入只读面板”；网络、WebView、桥、探针、题包解析与本地答案索引默认关闭，可在注入面板的“功能开关”里就地开启。日志输出 Logcat 标签 `UP366-P0`。
-
-注入面板：进入天学网后自动在 DecorView 上追加一个不透明的悬浮“答”按钮，可拖动且位置持久化（存目标 App 私有 prefs，清除天学网数据会重置）；点按展开只读面板，面板会跟随按钮位置定位（按钮在上方时面板显示在其下方，靠近底部时改为显示在上方，并始终夹取在屏幕内），包含状态、功能开关、当前套题答案、维护（清除本地答案索引、隐藏悬浮按钮）、诊断（最近事件与 `traceId`/`requestId` 链路查询）、日志文件、以及**只读开发者工具**（输入 CSS 选择器后执行「DOM 概要 / 计算样式 / 门控概览」，结果可复制或按 raw 开关写入日志文件）。开发者工具会遍历当前 Activity 的 View 树收集所有 WebView、逐个打分并选中屏幕上真正有内容的那个（题包会预加载后续页面，不能只看“最后一个加载完的页面”），结果里会附 `target` 与各候选的 `candidates` 评分摘要；同时输出**祖先路径**与**按 slide 分组的统计**（`qst/opts/selected/optPointerNone/preview`），用于区分「预览结构」和「当前答题区」。另有「原生音频回调」按钮，列出最近捕获的 `onAudioStateChange` 调用（只存在于内存环形缓冲，不写 Logcat/文件），用于确认听音推进的回调格式。面板最下方是**自动化区**（默认关闭，需先在「功能开关」里打开对应开关）：「一键填答」按本地答案索引在答题层点击选项（绕过页面的 CSS 禁用，预览层 `#first-wrap` 不碰）；「快进听音并交卷」在运行时把桥调用 `playAudioWithParams` 的 `rate` 提到 16 倍（两遍音频真实但极快地播完），并在**页面开始加载时**就接管 `setTimeout`/`setInterval`（>60ms 的长等待压到 15–60ms）与 `Date.now`/`performance.now`（40 倍速，覆盖倒计时型等待），运行结束或异常时立即还原；同时重试复现页面自己的 `onAudioStateChangeV1(state=4)` 回调推进大题。全部解锁后点击提交并对「未作答完」弹窗自动确认，结果里回报 `timerCalls`/`clockCalls`/`audioWaitMs`，便于区分「等待」与「音频」各占多少时间。自动化区顶部有**速度档位**按钮：`关闭 → 标准 → 快速（默认） → 极限`，点击即切换并持久化；档位同时决定播放倍速（1/8/16/32 倍）、页面时钟倍速（1/20/40/80 倍）、定时器压缩上限（关闭 / ≤120ms / ≤60ms / ≤30ms）与 stop 重试间隔（400/250/120/80ms）。两者都不 hook 原生、不改桥，异常全部旁路，结果只显示在面板。当前套题答案只显示当前打开的题包页面（例如一套 20 小题的听力练习），按材料大题分组输出 `N. 题干：正确选项正文`，行内文字可长按复制；套题名（`bookName` + `updateNavigationTitle`）来自只读 Bridge 元数据，题干与选项正文只保留在目标进程内存中，不落盘、不写日志。开发者工具与面板都只读：不点击、不修改 DOM/JS、不调用业务桥、不写 `user_answer`/`saveData`、不触发提交；DOM 正文只在面板内显示，不写 Logcat。
-
-超过 Logcat 单行限制的事件会输出为 `P0CHUNK id=N part=X/Y ...`。重组时按同一个 `id` 的 `part` 顺序拼接前缀后的内容，即可还原原始 JSON 事件。
-
-桥提交状态日志只保留结构统计和匹配数量；桥通用日志对提交/上传参数省略正文。启用网络和桥观察仍可能产生敏感元数据，不要公开分享原始日志。
+详细的设计、边界与真机证据见仓库本地文档（不随仓库分发）。
 
 ---
 
-## 3. 已定约定
+## 2. 构建
+
+```bash
+./gradlew :module:testDebugUnitTest :module:assembleDebug
+```
+
+产物：`module/build/outputs/apk/debug/module-debug.apk`（纯 LSPosed 模块，无独立 App UI、无 Provider、无 `exported` 组件）。
 
 | 项 | 值 |
 |---|---|
-| 命名空间 / 模块包名 | `io.github.adkimsm.up366.hook` |
-| 目标 App | `com.up366.mobile`（天学网学生 6.0.1 / vc220） |
-| 构建方式 | 用户自行在 Android Studio 编译，本仓库只交付源码 |
-| 日志输出 | Logcat 标签 `UP366-P0` |
-| 开发环境 | 本机 shell 就是 Android 设备本体（详见 §4） |
+| 模块包名 | `io.github.adkimsm.up366.hook` |
+| 目标 App | `com.up366.mobile` |
+| compileSdk / targetSdk | 36 |
+| minSdk | 26 |
+| 目标 ABI | `arm64-v8a` |
+| Xposed API | `de.robv.android.xposed:api:82`（`compileOnly`） |
+
+安装后在 LSPosed 中启用模块，**作用域只勾选 `com.up366.mobile`**。
 
 ---
 
-## 4. 开发环境备忘
+## 3. 测试用的题包样本
 
-当前 shell **运行在天学网所在的同一台 Android 设备上**（Ubuntu 24.04 rootfs，Linux 6.12 android16，aarch64，uid 1001，**无 root**）。
+部分单元测试（`QuestionDataParserTest`、`AnswerIndexerTest`）依赖一份**运行时题包样本**，它属于第三方内容，
+**不随本仓库分发**。默认情况下这两个测试会因为找不到样本而失败，其余测试正常。
 
-- JDK 25（Temurin）、Android SDK `/home/adkinsm/Android/Sdk`（platforms `android-36` / `android-37.0`；build-tools `36.0.0` / `37.0.0`）
-- Gradle 9.3.1（`/home/adkinsm/gradle/gradle-9.3.1`）、Node 24.15.0、bun 1.4.2
-- 可直连 `dl.google.com` 与 `repo1.maven.org`
-- shell **读不到** `/storage/emulated/0`（无 root）→ 读 APK 只能走 MT MCP 工具
-- `platform-tools/adb` 是 x86-64 二进制，本机跑不了，忽略
+如需完整跑通测试：从设备的题包目录把一份题包复制到仓库根目录的 `flipbook/` 下，保持结构：
+
+```text
+flipbook/
+└── <bookId>/
+    ├── <chapterId>/<pageId>/1.html
+    ├── <chapterId>/<pageId>/questions/<questionId>/questionData.js
+    └── resources/...                       # 页面脚本与样式（供离线分析）
+```
+
+测试通过向上查找 `flipbook/` 来定位样本，因此放在仓库根目录即可，不需要额外配置。
+`flipbook/`、`data/`、`docs/` 与日志均已加入 `.gitignore`，不会被提交。
 
 ---
 
-## 5. 协作约定
+## 4. 使用
 
-1. 有新发现 → 先更新 `docs/`，再动代码。
-2. 每条结论尽量标注**证据来源**（哪个工具 / 哪个文件 / 哪个类），未验证的一律写「待验证」。
-3. 不把「推测」写成「事实」。`docs/05-risks-open-questions.md` 是唯一记录未解问题的地方。
-4. 代码开工前必须先确认 `docs/05` 里的 **Q1（加固是否拦 LSPosed）** 有结论。
+1. 安装 `module-debug.apk`，LSPosed 中启用并只勾选 `com.up366.mobile`。
+2. 打开天学网，DecorView 上会出现悬浮「答」按钮（可拖动、位置持久化）；点按展开只读面板。
+3. 在「功能开关」里按需开启：网络、WebView、桥、探针、题包解析、本地答案索引。
+4. 「开发者工具」对当前页面执行 DOM 概要 / 计算样式 / 门控概览（只读，不点击、不改 DOM）。
+5. 自动化（需先在「功能开关」打开对应开关）：
+   - 「一键填答」：按本地答案索引在答题层点击选项；
+   - 「快进听音并交卷」：加速听音、压缩页面等待并自动交卷；
+   - 「速度档：…」：切换速度档位（关闭 / 标准 / 快速 / 极限）。
+
+日志默认输出 Logcat，标签 `UP366-P0`。可在面板开启「结构化日志写入私有目录」把同样已脱敏的 NDJSON 事件写入
+目标 App 私有目录 `files/up366/logs/`；`log_raw_bridge`（默认关，仅调试）会额外写入无法解析的原始回调/状态载荷，
+**含业务数据，用完请删除**。超过 Logcat 单行限制的事件会分片输出为 `P0CHUNK id=N part=X/Y ...`。
+
+---
+
+## 5. 隐私边界
+
+- 模块代码只运行在 `com.up366.mobile` 进程内，不声明 `exported` 组件，不监听外部广播，不提供 IPC。
+- 答案、题干与凭据不写入默认 Logcat；`uId`/`clientId` 等标识使用不可逆短哈希，Cookie/Token 等字段默认脱敏。
+- 面板与开发者工具中的页面结构、题干与选项只存在于目标进程内，不落盘、不写 Logcat。
+- 可选的文件日志与原始载荷仅写目标 App 私有目录，清除天学网数据会一并清除。
 
 ---
 
 ## 6. 许可证
 
-本项目以 **GNU General Public License v3.0（GPL-3.0）** 发布，完整条款见仓库根目录的 [`LICENSE`](LICENSE)。
+本项目以 **GNU General Public License v3.0（GPL-3.0）** 发布，完整条款见 [`LICENSE`](LICENSE)。
 
 ```
-up366 — LSPosed module for the Tianxuewang Android client
-Copyright (C) 2026  up366 contributors
+up366-hook — LSPosed module for the Tianxuewang Android client
+Copyright (C) 2026  up366-hook contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -111,5 +116,3 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ```
-
-沿用上游 Auto366 的「仅供学习研究，严禁商用」约定（见 `docs/05-risks-open-questions.md` 法律与合规提醒）。
