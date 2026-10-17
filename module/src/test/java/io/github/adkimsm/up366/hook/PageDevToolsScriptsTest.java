@@ -51,5 +51,18 @@ public final class PageDevToolsScriptsTest {
         assertTrue(script.contains(".u3-submit"));
         assertTrue(script.contains("pointerEvents"));
         assertTrue(script.contains("WebViewReady"));
+        assertTrue(script.contains("optPointerNone"));
+        assertTrue(script.contains("visibilityState"));
+        assertTrue(script.contains("u3-opt-id"));
+    }
+
+    @Test
+    public void locateIsReadOnlyAndReportsTheContentScoreInputs() {
+        String script = PageDevToolsScripts.locate();
+        for (String key : new String[]{"qst", "opts", "sel", "card", "audio", "slides", "bodyLen", "enterView"}) {
+            assertTrue("locate must report " + key, script.contains(key + ":"));
+        }
+        assertFalse(script.contains(".click("));
+        assertFalse(script.contains("setAttribute"));
     }
 }

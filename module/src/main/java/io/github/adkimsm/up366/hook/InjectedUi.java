@@ -427,9 +427,9 @@ final class InjectedUi {
                 LogSink.diagnostic("devtools_query", Trace.newTraceId(), Trace.newRequestId(), "ok", "", 0,
                         "tool", kind, "selector", LogSink.limit(LogSink.redact(selector), 120));
             };
-            if ("styles".equals(kind)) PageDevTools.styles(selector, callback);
-            else if ("gate".equals(kind)) PageDevTools.gateOverview(callback);
-            else PageDevTools.outline(selector, callback);
+            if ("styles".equals(kind)) PageDevTools.styles(activity, selector, callback);
+            else if ("gate".equals(kind)) PageDevTools.gateOverview(activity, callback);
+            else PageDevTools.outline(activity, selector, callback);
         }
 
         private void exportDevDump() {

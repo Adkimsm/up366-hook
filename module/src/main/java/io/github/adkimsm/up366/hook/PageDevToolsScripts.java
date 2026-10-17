@@ -74,6 +74,20 @@ final class PageDevToolsScripts {
                 + "}catch(e){return JSON.stringify({error:String(e&&e.message||e)});}})()";
     }
 
+    /** Tiny read-only page fingerprint used to pick the WebView that is actually on screen. */
+    static String locate() {
+        return "(function(){try{"
+                + "function q(s){try{return document.querySelectorAll(s).length}catch(e){return 0}}"
+                + "var href='';try{href=location.href}catch(e){}"
+                + "var b=0;try{b=Math.min((document.body&&document.body.textContent"
+                + "?document.body.textContent.length:0),20000)}catch(e){b=-1}"
+                + "return JSON.stringify({href:href,qst:q('.u3compo-qst'),opts:q('.u3-qst-opt'),"
+                + "sel:q('.u3-qst-opt.u3-selected'),card:q('.u3compo-answercard'),audio:q('audio'),"
+                + "slides:q('.swiper-slide'),bodyLen:b,"
+                + "enterView:!!(window.WebViewReady&&window.WebViewReady.enterView)});"
+                + "}catch(e){return JSON.stringify({error:String(e&&e.message||e)});}})()";
+    }
+
     /** Compact read-only state overview used to pin down the listening/submit gating. */
     static String gateOverview() {
         return "(function(){try{"
@@ -82,15 +96,25 @@ final class PageDevToolsScripts {
                 + "var s=getComputedStyle(e);"
                 + "return s.display+'/'+s.visibility+'/'+s.pointerEvents+'/'+(e.offsetParent?'visible':'hidden');"
                 + "}catch(e){return 'err'}}"
+                + "function peNone(sel){try{var els=document.querySelectorAll(sel),n=0;"
+                + "for(var i=0;i<els.length&&i<200;i++){"
+                + "if(getComputedStyle(els[i]).pointerEvents==='none')n++;}return n}catch(e){return -1}}"
+                + "function optIds(){try{var els=document.querySelectorAll('[u3-opt-id]'),out=[];"
+                + "for(var i=0;i<els.length&&out.length<8;i++){var v=els[i].getAttribute('u3-opt-id');"
+                + "if(v&&out.indexOf(v)<0)out.push(v);}return out}catch(e){return []}}"
                 + "var audio=[];try{var as=document.querySelectorAll('audio');"
                 + "for(var i=0;i<as.length&&i<5;i++){var a=as[i];audio.push({paused:a.paused,ended:a.ended,"
                 + "t:Math.round((a.currentTime||0)*10)/10,d:Math.round((a.duration||0)*10)/10});}}catch(e){}"
                 + "return JSON.stringify({"
-                + "url:location.href,ready:document.readyState,"
+                + "url:location.href,ready:document.readyState,visibility:document.visibilityState,"
+                + "bodyLen:(function(){try{return Math.min((document.body&&document.body.textContent"
+                + "?document.body.textContent.length:0),20000)}catch(e){return -1}})(),"
                 + "enterView:!!(window.WebViewReady&&window.WebViewReady.enterView),"
                 + "qst:{all:q('.u3compo-qst'),disabled:q('.u3compo-qst.u3-disable'),"
                 + "single:q('.u3compo-singlechoice'),opts:q('.u3-qst-opt'),"
-                + "selected:q('.u3-qst-opt.u3-selected'),withOptId:q('[u3-opt-id]')},"
+                + "selected:q('.u3-qst-opt.u3-selected'),withOptId:q('[u3-opt-id]'),"
+                + "optPointerNone:peNone('.u3-qst-opt'),qstPointerNone:peNone('.u3compo-qst'),"
+                + "optIds:optIds()},"
                 + "submit:{card:q('.u3compo-answercard'),btn:q('.u3-submit'),style:st('.u3-submit')},"
                 + "popup:q('.u3compo-popup'),"
                 + "audio:{els:q('audio'),state:audio,medias:q('.u3-audio'),playBtns:q('.u3-mplay-btn')},"
