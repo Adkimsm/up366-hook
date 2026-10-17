@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Build and publish to the LSPosed module repository"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  MIRROR_REPO: Xposed-Modules-Repo/io.github.adkimsm.up366.hook
+  APK_DIR: module/build/outputs/apk/release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is not set"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/up366-release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/up366-release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build signed APK
+        run: ./gradlew :module:testDebugUnitTest :module:assembleRelease -PskipSampleTests
+
+      - name: Verify signature and read version
+        id: version
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --print-certs "$APK_DIR/module-release.apk"
+          CODE=$(jq -r '.elements[0].versionCode' "$APK_DIR/output-metadata.json")
+          NAME=$(jq -r '.elements[0].versionName' "$APK_DIR/output-metadata.json")
+          {
+            echo "code=$CODE"
+            echo "name=$NAME"
+            echo "tag=$CODE-$NAME"
+            echo "asset=$APK_DIR/module-release.apk"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect changelog
+        id: changelog
+        run: |
+          set -euo pipefail
+          NOTES="$RUNNER_TEMP/notes.md"
+          : > "$NOTES"
+          TAG="$GITHUB_REF_NAME"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && git cat-file -t "$TAG" 2>/dev/null | grep -qx tag; then
+            git tag -l --format='%(contents)' "$TAG" > "$NOTES"
+          fi
+          if [ ! -s "$NOTES" ] || [ "$(head -1 "$NOTES")" = "$TAG" ]; then
+            : > "$NOTES"
+            PREV=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+            if [ -n "$PREV" ]; then
+              git log --pretty='- %s' "$PREV..$TAG" > "$NOTES"
+            else
+              git log --pretty='- %s' "$TAG" > "$NOTES"
+            fi
+          fi
+          printf '\n源码：https://github.com/%s\n' "$GITHUB_REPOSITORY" >> "$NOTES"
+          echo "notes=$NOTES" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: module-release-apk
+          path: module/build/outputs/apk/release/module-release.apk
+
+      - name: Publish to LSPosed module repository
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        env:
+          GH_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::MIRROR_TOKEN secret is not set"
+            exit 1
+          fi
+          TAG="${{ steps.version.outputs.tag }}"
+          ASSET="${{ steps.version.outputs.asset }}"
+          NAME="${{ steps.version.outputs.name }}"
+          NOTES="${{ steps.changelog.outputs.notes }}"
+          if gh release view "$TAG" --repo "$MIRROR_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --repo "$MIRROR_REPO" --clobber
+            gh release edit "$TAG" --repo "$MIRROR_REPO" --title "$NAME" --notes-file "$NOTES"
+          else
+            gh release create "$TAG" "$ASSET" --repo "$MIRROR_REPO" --title "$NAME" --notes-file "$NOTES"
+          fi

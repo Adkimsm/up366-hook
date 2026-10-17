@@ -103,7 +103,33 @@ flipbook/
 
 ---
 
-## 6. 许可证
+## 6. 发版（维护者）
+
+打 tag 推送后，GitHub Actions（`.github/workflows/release.yml`）会跑测试、构建签名 APK，并发布到 LSPosed 镜像仓库
+`Xposed-Modules-Repo/io.github.adkimsm.up366.hook`（tag 规范 `{versionCode}-{versionName}`，如 `1-0.1.0`）：
+
+```bash
+git tag -a v0.2.0 -m "changelog（作为 release 正文）"
+git push origin v0.2.0
+```
+
+- 发版前先改 `module/build.gradle.kts` 里的 `versionCode` / `versionName`；
+- release 正文优先取 tag 附注，未写时自动用提交标题生成；
+- 工作流也支持在 Actions → Release → Run workflow 手动触发，`publish` 不勾选则只构建不发布。
+
+仓库 Secrets（Settings → Secrets and variables → Actions）：
+
+| Secret | 内容 |
+|---|---|
+| `KEYSTORE_BASE64` | 发布 keystore 的 base64（`base64 -w0 up366-release.jks`） |
+| `KEYSTORE_STORE_PASSWORD` | keystore 口令 |
+| `KEY_ALIAS` | `up366` |
+| `KEY_PASSWORD` | 密钥口令 |
+| `MIRROR_TOKEN` | 对镜像仓库有 `Contents: Read and write` 权限的 fine-grained PAT |
+
+---
+
+## 7. 许可证
 
 本项目以 **GNU General Public License v3.0（GPL-3.0）** 发布，完整条款见 [`LICENSE`](LICENSE)。
 

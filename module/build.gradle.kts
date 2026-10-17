@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.gradle.api.tasks.testing.Test
 
 plugins {
     id("com.android.application")
@@ -54,4 +55,14 @@ dependencies {
     compileOnly("de.robv.android.xposed:api:82")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+}
+
+// CI 上没有被 .gitignore 的 flipbook/ 题包样本，用 -PskipSampleTests 跳过依赖样本的两个测试。
+tasks.withType<Test>().configureEach {
+    if (project.hasProperty("skipSampleTests")) {
+        filter {
+            excludeTestsMatching("io.github.adkimsm.up366.hook.QuestionDataParserTest")
+            excludeTestsMatching("io.github.adkimsm.up366.hook.AnswerIndexerTest")
+        }
+    }
 }
