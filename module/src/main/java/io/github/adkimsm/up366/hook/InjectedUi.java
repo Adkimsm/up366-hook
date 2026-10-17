@@ -112,9 +112,9 @@ final class InjectedUi {
     private static FrameLayout.LayoutParams panelParams(Context context) {
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
                 dp(context, 300), FrameLayout.LayoutParams.WRAP_CONTENT);
-        params.gravity = Gravity.TOP | Gravity.END;
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.leftMargin = dp(context, 8);
         params.topMargin = dp(context, 140);
-        params.rightMargin = dp(context, 8);
         return params;
     }
 
@@ -198,6 +198,7 @@ final class InjectedUi {
                                 params.leftMargin = clamp(startLeft + dx, 0, maxLeft);
                                 params.topMargin = clamp(startTop + dy, 0, maxTop);
                                 view.setLayoutParams(params);
+                                if (panel.getVisibility() == View.VISIBLE) positionPanel();
                             }
                             return true;
                         case MotionEvent.ACTION_UP:
@@ -219,8 +220,46 @@ final class InjectedUi {
 
         private void togglePanel() {
             boolean opening = panel.getVisibility() != View.VISIBLE;
-            panel.setVisibility(opening ? View.VISIBLE : View.GONE);
-            if (opening) refresh();
+            if (opening) {
+                positionPanel();
+                panel.setVisibility(View.VISIBLE);
+                panel.post(this::positionPanel);
+                refresh();
+            } else {
+                panel.setVisibility(View.GONE);
+            }
+        }
+
+        /** Anchors the panel next to the button so it follows the button's dragged position. */
+        private void positionPanel() {
+            if (!(button.getLayoutParams() instanceof FrameLayout.LayoutParams)) return;
+            if (!(panel.getLayoutParams() instanceof FrameLayout.LayoutParams)) return;
+            if (!(button.getParent() instanceof ViewGroup)) return;
+            ViewGroup parent = (ViewGroup) button.getParent();
+            FrameLayout.LayoutParams buttonParams =
+                    (FrameLayout.LayoutParams) button.getLayoutParams();
+            FrameLayout.LayoutParams panelLayout =
+                    (FrameLayout.LayoutParams) panel.getLayoutParams();
+            panelLayout.gravity = Gravity.TOP | Gravity.START;
+
+            int gap = dp(activity, 6);
+            int parentWidth = parent.getWidth();
+            int parentHeight = parent.getHeight();
+            int panelWidth = panel.getWidth() > 0 ? panel.getWidth() : panelLayout.width;
+            if (panelWidth <= 0) panelWidth = dp(activity, 300);
+            int panelHeight = panel.getHeight();
+
+            int left = clamp(buttonParams.leftMargin, 0, Math.max(0, parentWidth - panelWidth));
+            int below = buttonParams.topMargin + button.getHeight() + gap;
+            int top = below;
+            if (panelHeight > 0 && below + panelHeight > parentHeight) {
+                int above = buttonParams.topMargin - gap - panelHeight;
+                if (above >= 0) top = above;
+            }
+            panelLayout.leftMargin = left;
+            panelLayout.topMargin = clamp(top, 0,
+                    Math.max(0, parentHeight - Math.max(0, panelHeight)));
+            panel.setLayoutParams(panelLayout);
         }
 
         private static int clamp(int value, int min, int max) {
