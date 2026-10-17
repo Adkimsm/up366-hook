@@ -61,7 +61,7 @@ public final class AutomationScriptsTest {
         assertTrue(hooks.contains("performance.now"));
         assertTrue(hooks.contains("timerCalls"));
         assertTrue(hooks.contains("clockCalls"));
-        assertTrue(hooks.contains("Math.min(ms,120)"));
+        assertTrue(hooks.contains("Math.min(ms,60)"));
 
         String restore = AutomationScripts.pageHooksRestoreScript();
         assertTrue(restore.contains("window.setTimeout=H.st"));

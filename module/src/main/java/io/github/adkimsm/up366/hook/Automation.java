@@ -22,9 +22,9 @@ final class Automation {
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
-    private static final long FAST_STEP_MS = 60L;
-    private static final long SLOW_STEP_MS = 200L;
-    private static final long STOP_RETRY_MS = 250L;
+    private static final long FAST_STEP_MS = 30L;
+    private static final long SLOW_STEP_MS = 120L;
+    private static final long STOP_RETRY_MS = 120L;
     private static final int MAX_STEPS = 1500;
     private static final int SUBMIT_GRACE_STEPS = 12;
 
@@ -103,6 +103,8 @@ final class Automation {
         final WebView webView;
         final long startedAt = android.os.SystemClock.elapsedRealtime();
         String targetId = "";
+        long targetSetAt = startedAt;
+        long audioWaitMs;
         int targetAttempts;
         long lastStopAt;
         int audioIds;
@@ -115,6 +117,7 @@ final class Automation {
 
         Run(WebView webView) {
             this.webView = webView;
+            this.targetSetAt = startedAt;
         }
     }
 
@@ -126,7 +129,9 @@ final class Automation {
         long now = android.os.SystemClock.elapsedRealtime();
         String audioId = AudioPlayback.currentId();
         if (audioId != null && !audioId.isEmpty() && !audioId.equals(run.targetId)) {
+            if (!run.targetId.isEmpty()) run.audioWaitMs += now - run.targetSetAt;
             run.targetId = audioId;
+            run.targetSetAt = now;
             run.targetAttempts = 0;
             run.audioIds++;
         }
@@ -188,6 +193,9 @@ final class Automation {
             int timerCalls = counter(restored, "timerCalls");
             int clockCalls = counter(restored, "clockCalls");
             long elapsed = android.os.SystemClock.elapsedRealtime() - run.startedAt;
+            if (!run.targetId.isEmpty()) {
+                run.audioWaitMs += android.os.SystemClock.elapsedRealtime() - run.targetSetAt;
+            }
             long average = run.audioIds == 0 ? 0 : elapsed / run.audioIds;
             String summary = "{\"reason\":\"" + reason + "\",\"audioIds\":" + run.audioIds
                     + ",\"forcedStops\":" + run.forcedStops
@@ -197,6 +205,7 @@ final class Automation {
                     + ",\"rate\":\"" + AutomationScripts.ACCELERATED_RATE + "\""
                     + ",\"timerCalls\":" + timerCalls
                     + ",\"clockCalls\":" + clockCalls
+                    + ",\"audioWaitMs\":" + run.audioWaitMs
                     + ",\"steps\":" + run.steps
                     + ",\"elapsedMs\":" + elapsed
                     + ",\"avgPerSectionMs\":" + average + "}";
@@ -205,6 +214,7 @@ final class Automation {
                     "forced_stops", Integer.toString(run.forcedStops),
                     "timer_calls", Integer.toString(timerCalls),
                     "clock_calls", Integer.toString(clockCalls),
+                    "audio_wait_ms", Long.toString(run.audioWaitMs),
                     "elapsed_ms", Long.toString(elapsed));
             deliver(callback, summary);
         });

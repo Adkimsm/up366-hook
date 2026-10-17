@@ -10,9 +10,9 @@ import java.util.Map;
  */
 final class AutomationScripts {
     /** Playback rate used while the listening fast-forward is running. */
-    static final String ACCELERATED_RATE = "8.0";
+    static final String ACCELERATED_RATE = "16.0";
     /** Clock multiplier used to collapse countdown-style waits. */
-    static final int ACCELERATED_CLOCK = 20;
+    static final int ACCELERATED_CLOCK = 40;
     private static final java.util.regex.Pattern RATE_FIELD =
             java.util.regex.Pattern.compile("\"rate\"\\s*:\\s*[0-9.]+");
 
@@ -44,8 +44,8 @@ final class AutomationScripts {
                 + "pn:(window.performance&&window.performance.now)?window.performance.now:null,"
                 + "timerCalls:0,clockCalls:0,t0:Date.now(),speed:" + ACCELERATED_CLOCK + "};"
                 + "window.__up366_hooks=H;"
-                + "function c(ms){if(typeof ms!=='number'||ms<=100)return ms;"
-                + "return Math.max(30,Math.min(ms,120));}"
+                + "function c(ms){if(typeof ms!=='number'||ms<=60)return ms;"
+                + "return Math.max(15,Math.min(ms,60));}"
                 + "window.setTimeout=function(fn,ms){var a=Array.prototype.slice.call(arguments,2);"
                 + "var d=c(ms);if(d!==ms)H.timerCalls++;"
                 + "return H.st.apply(window,[fn,d].concat(a));};"
