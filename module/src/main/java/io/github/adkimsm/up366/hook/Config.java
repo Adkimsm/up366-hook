@@ -43,6 +43,9 @@ final class Config {
     static final String FLOAT_X = "float_x";
     static final String FLOAT_Y = "float_y";
 
+    /** Persistent UI preference: last selected injected-panel tab (clamped by the panel). */
+    static final String PANEL_TAB = "panel_tab";
+
     static final String PREFS = "p0_flags";
     static final String TARGET_PACKAGE = "com.up366.mobile";
 
@@ -131,6 +134,23 @@ final class Config {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putInt(FLOAT_X, x).putInt(FLOAT_Y, y).apply();
         LogSink.event("config_updated", "key", "float_position", "status", "ok");
+    }
+
+    /** Last selected panel tab; 0 (答案) when never chosen. The panel clamps the range. */
+    static int panelTab(Context context) {
+        if (context == null) return 0;
+        try {
+            return Math.max(0, context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getInt(PANEL_TAB, 0));
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    static void setPanelTab(Context context, int index) {
+        if (context == null || index < 0) return;
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putInt(PANEL_TAB, index).apply();
     }
 
     static boolean defaultValue(String key) {
