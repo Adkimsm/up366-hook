@@ -117,6 +117,7 @@ git push origin v0.2.0
 
 - 发版前先改 `module/build.gradle.kts` 里的 `versionCode` / `versionName`；
 - release 正文优先取 tag 附注，未写时自动用提交标题生成；
+- 顺序上先发主仓库、再发镜像仓库；`MIRROR_TOKEN` 只影响镜像仓库这一步；
 - 工作流也支持在 Actions → Release → Run workflow 手动触发，`publish` 不勾选则只构建不发布。
 
 仓库 Secrets（Settings → Secrets and variables → Actions）：
