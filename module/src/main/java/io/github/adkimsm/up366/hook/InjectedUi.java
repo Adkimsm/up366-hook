@@ -9,6 +9,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.text.format.DateFormat;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -27,6 +28,7 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -44,6 +46,10 @@ import java.util.concurrent.Executors;
 final class InjectedUi {
     private static final Map<Activity, Root> ATTACHED =
             Collections.synchronizedMap(new WeakHashMap<Activity, Root>());
+
+    /** Rolling automation output: how many result lines stay visible and how long one may be. */
+    private static final int MAX_AUTOMATION_LINES = 8;
+    private static final int MAX_AUTOMATION_LINE = 240;
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(runnable -> {
@@ -145,6 +151,7 @@ final class InjectedUi {
         final EditText devSelector;
         final TextView devOutput;
         final TextView automationOutput;
+        final ArrayDeque<String> automationLog = new ArrayDeque<>();
         final EditText traceInput;
         final TextView traceResult;
         String lastDevDump = "";
@@ -455,6 +462,11 @@ final class InjectedUi {
             advanceButton.setOnClickListener(view -> runAutoAdvance());
             content.addView(advanceButton);
 
+            Button stopButton = new Button(context);
+            stopButton.setText("停止快进");
+            stopButton.setOnClickListener(view -> stopAutoAdvance());
+            content.addView(stopButton);
+
             automationOutput.setTextSize(11);
             automationOutput.setTextIsSelectable(true);
             automationOutput.setText("（未执行）");
@@ -466,9 +478,10 @@ final class InjectedUi {
                 Toast.makeText(activity, "请先在“功能开关”里打开：自动填答", Toast.LENGTH_LONG).show();
                 return;
             }
-            automationOutput.setText("填答中…");
+            appendAutomation(Automation.isRunning()
+                    ? "fill: 已并入快进，等待执行…" : "fill: 执行中…");
             Automation.fill(activity, json -> {
-                automationOutput.setText(renderAutomation("fill", json));
+                appendAutomation("fill: " + compactJson(json));
                 LogSink.diagnostic("panel_auto_fill", Trace.newTraceId(), Trace.newRequestId(),
                         "ok", "", 0, "result", LogSink.limit(LogSink.redact(json), 200));
             });
@@ -479,19 +492,40 @@ final class InjectedUi {
                 Toast.makeText(activity, "请先在“功能开关”里打开：自动推进听音并交卷", Toast.LENGTH_LONG).show();
                 return;
             }
-            automationOutput.setText("快进中…（伪造听音完成并尝试交卷，请勿离开）");
+            appendAutomation(Automation.isRunning()
+                    ? "advance: 重启快进…"
+                    : "advance: 开始快进（伪造听音完成并尝试交卷，请勿离开）");
             Automation.advance(activity, json -> {
-                automationOutput.setText(renderAutomation("advance", json));
+                appendAutomation("advance: " + compactJson(json));
                 LogSink.diagnostic("panel_auto_advance", Trace.newTraceId(), Trace.newRequestId(),
                         "ok", "", 0, "result", LogSink.limit(LogSink.redact(json), 200));
             });
         }
 
-        private String renderAutomation(String kind, String json) {
+        /** Ends the running fast-forward; queued fill requests still execute afterwards. */
+        private void stopAutoAdvance() {
+            if (Automation.stop()) {
+                appendAutomation("advance: 已请求停止");
+            } else {
+                Toast.makeText(activity, "当前没有快进在运行", Toast.LENGTH_SHORT).show();
+            }
+        }
+
+        /** Appends one timestamped automation line; the two actions no longer overwrite each other. */
+        private void appendAutomation(String text) {
+            String line = "[" + DateFormat.format("HH:mm:ss", System.currentTimeMillis())
+                    + "] " + text;
+            automationLog.addLast(line.length() <= MAX_AUTOMATION_LINE
+                    ? line : line.substring(0, MAX_AUTOMATION_LINE) + "…");
+            while (automationLog.size() > MAX_AUTOMATION_LINES) automationLog.removeFirst();
+            automationOutput.setText(join(new ArrayList<>(automationLog)));
+        }
+
+        private String compactJson(String json) {
             try {
-                return kind + ":\n" + new JSONObject(json).toString(2);
+                return new JSONObject(json).toString();
             } catch (Throwable ignored) {
-                return kind + ": " + json;
+                return json;
             }
         }
 
