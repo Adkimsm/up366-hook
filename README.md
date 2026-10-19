@@ -105,8 +105,10 @@ flipbook/
 
 ## 6. 发版（维护者）
 
-打 tag 推送后，GitHub Actions（`.github/workflows/release.yml`）会跑测试、构建签名 APK，并发布到 LSPosed 镜像仓库
-`Xposed-Modules-Repo/io.github.adkimsm.up366.hook`（tag 规范 `{versionCode}-{versionName}`，如 `1-0.1.0`）：
+打 tag 推送后，GitHub Actions（`.github/workflows/release.yml`）会跑测试、构建签名 APK，并同时发布两个 release：
+
+- **主仓库**：tag 为推送的 `v*` tag；
+- **LSPosed 镜像仓库** `Xposed-Modules-Repo/io.github.adkimsm.up366.hook`：tag 规范为 `{versionCode}-{versionName}`（如 `1-0.1.0`）。
 
 ```bash
 git tag -a v0.2.0 -m "changelog（作为 release 正文）"

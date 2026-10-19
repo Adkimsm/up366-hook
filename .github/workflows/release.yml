@@ -12,7 +12,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   MIRROR_REPO: Xposed-Modules-Repo/io.github.adkimsm.up366.hook
@@ -117,4 +117,24 @@ jobs:
             gh release edit "$TAG" --repo "$MIRROR_REPO" --title "$NAME" --notes-file "$NOTES"
           else
             gh release create "$TAG" "$ASSET" --repo "$MIRROR_REPO" --title "$NAME" --notes-file "$NOTES"
+          fi
+
+      - name: Publish to source repository
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="v${{ steps.version.outputs.name }}"
+          fi
+          ASSET="${{ steps.version.outputs.asset }}"
+          NOTES="${{ steps.changelog.outputs.notes }}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file "$NOTES"
+          else
+            gh release create "$TAG" "$ASSET" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file "$NOTES"
           fi
